@@ -1,0 +1,67 @@
+# The version of APIs your extension will receive. Learn more:
+# https://shopify.dev/docs/api/usage/versioning
+api_version = "2025-07"
+
+[[extensions]]
+type = "ui_extension"
+name = "B2B Wholesale POS"
+uid = "3c85dd6e-47c9-c210-42f7-06d031bbb65760fb5270"
+handle = "b2b-wholesale-pos"
+description = "Create B2B orders with quantity rules and volume discounts in POS for wholesale customers"
+
+# Controls where in POS your extension will be injected,
+# and the file that contains your extension’s source code.
+[[extensions.targeting]]
+module = "./src/Tile.tsx"
+target = "pos.home.tile.render"
+
+[[extensions.targeting]]
+module = "./src/Modal.tsx"
+target = "pos.home.modal.render"
+
+# Access scopes required for B2B wholesale POS functionality
+[extensions.access_scopes]
+scopes = [
+  # Customer Management
+  "read_customers",
+  "write_customers",
+  "read_payment_terms",
+  
+  # Order Management
+  "read_orders",
+  "write_orders",
+  "read_draft_orders", 
+  "write_draft_orders",
+  
+  # Product & Inventory
+  "read_products",
+  "read_inventory",
+  "read_product_listings",
+  
+  # Location & Fulfillment
+  "read_locations",
+  "read_fulfillments",
+  "write_fulfillments",
+  
+  # Checkout & Cart (Admin API)
+  "read_checkouts",
+  "write_checkouts",
+  
+  # Storefront API Access (for active cart management)
+  "unauthenticated_read_product_listings",
+  "unauthenticated_write_checkouts",
+  "unauthenticated_write_customers",
+  
+  # Pricing & Discounts
+  "read_price_rules",
+  "write_price_rules",
+  "read_discounts",
+  "write_discounts",
+  
+  # Analytics & Reports
+  "read_reports",
+  
+  # App Management
+  "read_apps",
+  "write_apps"
+]
