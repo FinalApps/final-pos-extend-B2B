@@ -173,7 +173,6 @@ const useCompanyData = () => {
           setCompanyName(company.name)
           
           // Company info is now available for pricing
-          console.log(`Found company: ${company.name}`)
           
           return company.name
         }
@@ -188,8 +187,6 @@ const useCompanyData = () => {
 
   const fetchCompanyLocationId = useCallback(async (companyName: string) => {
     try {
-      console.log(`Fetching company location for: ${companyName}`)
-      
       // Use your specific query to fetch companies with their locations
       const companyQuery = `
         query GetCompaniesWithLocations {
@@ -244,17 +241,12 @@ const useCompanyData = () => {
         return null
       }
 
-      console.log(`Found company: ${exactCompany.name} with ID: ${exactCompany.id}`)
-
       // Get the company location
       const companyLocation = exactCompany.locations?.nodes?.[0]
       
       if (!companyLocation) {
-        console.log(`No locations found for company: ${exactCompany.name}`)
-      return null
+        return null
       }
-
-      console.log(`Found company location ID: ${companyLocation.id}`)
 
       // Return the company location information
       const catalogInfo = {
@@ -277,7 +269,6 @@ const useCompanyData = () => {
   const fetchCustomerCompanies = useCallback(async (customerName: string) => {
     try {
       setCompaniesLoading(true)
-      console.log(`Fetching companies associated with customer: ${customerName}`)
       
       const query = `
         query GetCustomerCompanies($customerName: String!) {
@@ -330,7 +321,6 @@ const useCompanyData = () => {
       const customers = result.data?.customers?.edges?.map((edge: any) => edge.node) || []
       
       if (customers.length === 0) {
-        console.log(`No customers found with name: ${customerName}`)
         return []
       }
 
@@ -339,8 +329,6 @@ const useCompanyData = () => {
         customer.displayName.toLowerCase() === customerName.toLowerCase()
       ) || customers[0]
 
-      console.log(`Found customer: ${exactCustomer.displayName}`)
-
       // Extract companies from customer's company contact profiles
       const companies = exactCustomer.companyContactProfiles?.map((profile: any) => ({
         id: profile.company.id,
@@ -348,7 +336,6 @@ const useCompanyData = () => {
         hasLocation: profile.company.locations?.edges?.length > 0
       })).filter((company: any) => company.hasLocation) || []
       
-      console.log(`Companies associated with customer ${customerName}:`, companies)
       setAvailableCompanies(companies)
       return companies
     } catch (error) {
@@ -361,7 +348,6 @@ const useCompanyData = () => {
 
   const fetchAllCompanies = useCallback(async () => {
     try {
-      console.log('Fetching all companies to verify names...')
       
       const query = `
         query GetAllCompanies {
@@ -399,7 +385,6 @@ const useCompanyData = () => {
         name: edge.node.name
       })) || []
       
-      console.log('All companies in store:', companies)
       return companies
     } catch (error) {
       console.error('Error fetching all companies:', error)
@@ -453,12 +438,6 @@ const useCompanyData = () => {
 
   const fetchContextualPricing = useCallback(async (variantId: string, companyLocationId: string) => {
     try {
-      console.log('=== CONTEXTUAL PRICING REQUEST ===')
-      console.log('Variant ID:', variantId)
-      console.log('Company Location ID:', companyLocationId)
-      console.log('Variant ID type:', typeof variantId)
-      console.log('Company Location ID type:', typeof companyLocationId)
-      
       // Validate ID formats
       if (!variantId || typeof variantId !== 'string') {
         console.error('Invalid variant ID:', variantId)
@@ -523,32 +502,20 @@ const useCompanyData = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
       })
-      console.log('Response:', response);
-
 
       const result = await response.json()
-      console.log('Result:', result);
 
       // Check for GraphQL errors
       if (result.errors) {
         console.error('GraphQL errors in contextual pricing query:', result.errors)
-        result.errors.forEach((error: any) => {
-          console.error(`GraphQL Error: ${error.message}`)
-          if (error.message.includes('Invalid id')) {
-            console.error(`❌ Invalid location ID: ${companyLocationId}`)
-            console.error('Please check if the location ID exists and is accessible')
-          }
-        })
         return null
       }
       
       if (result.data?.productVariant?.contextualPricing) {
         const pricing = result.data.productVariant.contextualPricing
-        console.log(`✅ Contextual pricing for variant ${variantId}:`, pricing)
         return pricing
       }
       
-      console.log('No contextual pricing found for variant:', variantId)
       return null
     } catch (error) {
       console.error('Error fetching contextual pricing:', error)
@@ -724,7 +691,6 @@ const useCompanyData = () => {
 
   const fetchCompanyAddresses = useCallback(async (companyId: string, companyName: string) => {
     try {
-      console.log(`Fetching addresses for company: ${companyName} (${companyId})`)
       
       const query = `
         query GetCompanyAddresses {
@@ -769,14 +735,11 @@ const useCompanyData = () => {
       }
 
       const locations = result.data?.companyLocations?.edges?.map((edge: any) => edge.node) || []
-      console.log(`Found ${locations.length} company locations:`, locations.map((l: any) => l.name))
       
       // Find location that matches the company name
       const matchingLocation = locations.find((location: any) => 
         location.name && location.name.toLowerCase().includes(companyName.toLowerCase())
       ) || locations[0] // Fallback to first location if no match found
-      
-      console.log(`Matching location for ${companyName}:`, matchingLocation)
       
       if (matchingLocation) {
         const addressData = {
@@ -785,16 +748,12 @@ const useCompanyData = () => {
           locationName: matchingLocation.name
         }
         
-        console.log(`Found company addresses for ${companyName}:`, addressData)
-        console.log(`Billing address details:`, matchingLocation.billingAddress)
-        
         // Store the address data
         setCompanyAddresses(prev => {
           const newAddresses = {
             ...prev,
             [companyId]: addressData
           }
-          console.log(`Updated company addresses:`, newAddresses)
           return newAddresses
         })
         
@@ -931,19 +890,6 @@ const useCart = (apiData: any, fetchCartDetails?: (cartId: string) => Promise<an
           variantId = String(lineItem.variant.id || lineItem.variant.variantId || variantId)
         }
         
-        // Log for debugging
-        console.log(`Processing cart item ${index}:`, {
-          productId,
-          variantId,
-          lineItem: {
-            productId: lineItem.productId,
-            variantId: lineItem.variantId,
-            variant: lineItem.variant,
-            title: lineItem.title,
-            sku: lineItem.sku,
-            product: lineItem.product
-          }
-        })
         
         // Get catalog pricing
         let catalogPrice = parseFloat(String(lineItem.price || '0'))
@@ -957,7 +903,6 @@ const useCart = (apiData: any, fetchCartDetails?: (cartId: string) => Promise<an
             catalogPrice = variant.price
             compareAtPrice = variant.compareAtPrice || 0
             hasCatalogPrice = true
-            console.log(`Found catalog pricing for variant ${variantId}:`, variant)
           }
         }
 
@@ -969,14 +914,6 @@ const useCart = (apiData: any, fetchCartDetails?: (cartId: string) => Promise<an
                   lineItem.product?.sku ||
                   null
         
-        console.log(`SKU extraction for item ${index}:`, {
-          cartDetailSku: cartDetail?.merchandise?.sku,
-          lineItemSku: lineItem.sku,
-          variantSku: lineItem.variant?.sku,
-          variantTitle: lineItem.variant?.title,
-          productSku: lineItem.product?.sku,
-          finalSku: sku
-        })
 
         // Try to get image URL from multiple sources (prioritize cart details)
         let imageUrl = cartDetail?.merchandise?.product?.featuredImage?.url ||
@@ -1187,10 +1124,6 @@ const Modal = () => {
   const [poNumber, setPoNumber] = useState('')
   const [deliveryMethod, setDeliveryMethod] = useState('pickup')
   
-  // Debug delivery method changes
-  useEffect(() => {
-    console.log('Delivery method changed to:', deliveryMethod, 'at timestamp:', new Date().toISOString())
-  }, [deliveryMethod])
   const [economyFee, setEconomyFee] = useState('15.00')
   const [standardFee, setStandardFee] = useState('25.00')
   const [quantityRules, setQuantityRules] = useState<Record<string, QuantityRules>>({})
@@ -1610,12 +1543,6 @@ const Modal = () => {
       default: 
         fee = 0
     }
-    console.log('Delivery fee calculation:', {
-      deliveryMethod,
-      economyFee,
-      standardFee,
-      calculatedFee: fee
-    })
     return fee
   }, [deliveryMethod, economyFee, standardFee])
 
@@ -1656,7 +1583,6 @@ const Modal = () => {
       const netTermsTemplate = paymentTermsTemplates.find(template => template.paymentTermsType === 'NET')
       if (netTermsTemplate) {
         setSelectedPaymentTerms(netTermsTemplate)
-        console.log('Auto-selected Net Terms template:', netTermsTemplate)
       }
     }
   }, [paymentTermsTemplates, selectedPaymentTerms])
@@ -1668,7 +1594,6 @@ const Modal = () => {
   // Auto-load customers when customer screen is shown
   useEffect(() => {
     if (currentScreen === 'customer' && customers.length === 0 && !customersLoading) {
-      console.log('Auto-loading customers...')
       fetchCustomers(50)
     }
   }, [currentScreen, customers.length, customersLoading, fetchCustomers])
@@ -1676,7 +1601,6 @@ const Modal = () => {
   // Auto-load companies when location screen is shown
   useEffect(() => {
     if (currentScreen === 'location' && availableCompanies.length === 0 && !companiesLoading && selectedCustomer) {
-      console.log('Auto-loading companies for selected customer:', selectedCustomer.name)
       fetchCustomerCompanies(selectedCustomer.name)
     }
   }, [currentScreen, availableCompanies.length, companiesLoading, selectedCustomer, fetchCustomerCompanies])
@@ -1684,7 +1608,6 @@ const Modal = () => {
   // Fetch product description when product detail screen is shown
   useEffect(() => {
     if (currentScreen === 'product-detail' && selectedProduct?.productId) {
-      console.log('Fetching product description for product detail screen')
       fetchProductDescription(selectedProduct.productId)
     }
   }, [currentScreen, selectedProduct?.productId, fetchProductDescription])
@@ -1692,25 +1615,16 @@ const Modal = () => {
   // Handlers
   const fetchB2BPricingForCart = useCallback(async (catalogInfo: any) => {
     try {
-      console.log('Fetching B2B contextual pricing for cart items...')
-      console.log('Catalog info received:', catalogInfo)
       const pricing: { [key: string]: any } = {}
       const rules: { [key: string]: any } = {}
       
       // Use the locationId from the catalog info
       const locationId = catalogInfo.locationId
-      console.log('Using location ID for contextual pricing:', locationId)
       
       if (!locationId) {
         console.error('No location ID found in catalog info')
         return { pricing, rules }
       }
-      
-      console.log('Cart items for B2B pricing:', cartItems.map(item => ({
-        name: item.name,
-        variantId: item.variantId,
-        productId: item.productId
-      })))
       
       for (const item of cartItems) {
         if (item.variantId) {
@@ -1719,15 +1633,9 @@ const Modal = () => {
             ? item.variantId 
             : `gid://shopify/ProductVariant/${item.variantId}`
           
-          console.log(`Fetching contextual pricing for variant: ${variantGid} with company location: ${locationId}`)
-          console.log(`Query will use: productVariant(id: "${variantGid}") with companyLocationId: "${locationId}"`)
           const contextualPricing = await fetchContextualPricing(variantGid, locationId);
-          console.log('Contextual Pricing:', contextualPricing.price.amount, contextualPricing.price.currencyCode);
           
           if (contextualPricing) {
-            console.log(`✅ Found contextual pricing for ${contextualPricing.product?.title}:`, contextualPricing)
-            console.log(`B2B Price: ${contextualPricing.price.amount} ${contextualPricing.price.currencyCode}`)
-            console.log(`Quantity Rules: Min=${contextualPricing.quantityRule.minimum}, Max=${contextualPricing.quantityRule.maximum}, Increment=${contextualPricing.quantityRule.increment}`)
             pricing[item.productId] = {
               price: parseFloat(contextualPricing.price.amount),
               currency: contextualPricing.price.currencyCode,
@@ -1741,8 +1649,6 @@ const Modal = () => {
               increment: contextualPricing.quantityRule.increment,
               priceBreaks: contextualPricing.quantityPriceBreaks.nodes
             }
-            
-            console.log(`B2B pricing for ${item.name}:`, pricing[item.productId])
           }
         }
       }
@@ -1760,19 +1666,13 @@ const Modal = () => {
     
     try {
       // First fetch the customer's company
-      console.log('Fetching customer company...')
       const company = await fetchCustomerCompany(customer.name)
       
       if (company) {
-        console.log(`Found company: ${company}`)
-        
         // Fetch the company's location ID
-        console.log('Fetching company location ID...')
         const locationCatalog = await fetchCompanyLocationId(company)
         
         if (locationCatalog) {
-          console.log(`Using company location: ${locationCatalog.companyName} - ${locationCatalog.locationId}`)
-          
           // Fetch B2B contextual pricing using the company location
           const { pricing, rules } = await fetchB2BPricingForCart(locationCatalog)
           setB2bPricing(pricing)
@@ -1784,7 +1684,6 @@ const Modal = () => {
             await fetchProductImages(items)
           }
       } else {
-          console.log('No company location found, using regular catalog data')
           const productIds = cartItems.map(item => item.productId)
           const { pricing, rules } = await fetchCatalogData(productIds)
           setB2bPricing(pricing)
@@ -1795,7 +1694,6 @@ const Modal = () => {
           }
         }
       } else {
-        console.log('No company found for customer, using regular pricing')
         // Use regular pricing without B2B discounts
         const items = await loadCartItems({})
         if (items && items.length > 0) {
@@ -1809,28 +1707,18 @@ const Modal = () => {
 
   const createB2BOrder = useCallback(async () => {
     try {
-      console.log('=== ORDER CREATION DEBUG ===')
-      console.log('Creating B2B order with delivery method:', deliveryMethod, 'delivery fee:', deliveryFee)
-      console.log('Current state at order creation:', {
-        deliveryMethod,
-        economyFee,
-        standardFee,
-        deliveryFee,
-        timestamp: new Date().toISOString()
-      })
-      
       if (!selectedCustomer || !selectedLocation) {
-        setValidationErrors(['Please select both customer and location'])
+        setValidationErrors(['⚠️ Please select both customer and company location to proceed'])
         return
       }
 
       if (!poNumber || poNumber.trim() === '') {
-        setValidationErrors(['PO Number is required'])
+        setValidationErrors(['📋 Purchase Order Number is required for B2B orders'])
         return
       }
 
       if (!validatePONumber(poNumber)) {
-        setValidationErrors(['Invalid PO number format'])
+        setValidationErrors(['❌ Invalid PO number format. Please use alphanumeric characters'])
         return
       }
 
@@ -1871,14 +1759,6 @@ const Modal = () => {
             { key: "Method", value: deliveryMethod }
           ]
         })
-        
-        console.log('✅ Delivery fee added as line item:', {
-          title: deliveryMethodName,
-          price: deliveryFee,
-          method: deliveryMethod
-        })
-      } else {
-        console.log('ℹ️ No delivery fee to add (deliveryFee = 0)')
       }
 
       // Add tax as a line item if applicable
@@ -1893,22 +1773,8 @@ const Modal = () => {
             { key: "Location", value: selectedLocation?.name || 'Unknown' }
           ]
         })
-        
-        console.log('✅ Tax added as line item:', {
-          title: taxData.title,
-          amount: taxAmount,
-          rate: taxData.rate
-        })
-      } else {
-        console.log('ℹ️ No tax to add (taxAmount = 0)')
       }
       
-      console.log('📋 Final line items for draft order:', lineItems.map(item => ({
-        title: item.title,
-        price: item.originalUnitPrice,
-        quantity: item.quantity
-      })))
-
       // Create draft order using Shopify Admin GraphQL API
       const draftOrderMutation = `
         mutation CreateB2BDraftOrder($input: DraftOrderInput!) {
@@ -2020,17 +1886,6 @@ const Modal = () => {
         throw new Error('Failed to create draft order')
       }
 
-      console.log('✅ Draft order created successfully:', draftOrder)
-      console.log('Order creation values:', {
-        orderTotal,
-        deliveryFee,
-        deliveryMethod,
-        economyFee,
-        standardFee,
-        finalTotal,
-        cartItemsCount: cartItems.length
-      })
-
       // Create local order data for confirmation screen
       const orderData: B2BOrder = {
         customerId: selectedCustomer.id,
@@ -2064,19 +1919,13 @@ const Modal = () => {
       
       // Fetch payment terms for the created draft order
       if (draftOrder.id) {
-        console.log('Fetching payment terms for created draft order...')
         await fetchPaymentTerms(draftOrder.id)
       }
       
       // Complete the draft order to make it appear in Orders section (payment pending by default)
       if (draftOrder.id) {
-        console.log('Completing draft order to make it appear in Orders section...')
         const completedOrder = await completeDraftOrder(draftOrder.id)
         if (completedOrder) {
-          console.log('✅ Draft order completed successfully, now appears in Orders section')
-          console.log('Financial Status:', completedOrder.displayFinancialStatus)
-          console.log('Fulfillment Status:', completedOrder.displayFulfillmentStatus)
-          
           // Update the order data with the completed order ID
           setCreatedOrder(prev => prev ? {
             ...prev,
@@ -2084,8 +1933,6 @@ const Modal = () => {
             isDraft: false,
             status: 'completed' as const
           } : prev)
-          } else {
-          console.warn('⚠️ Draft order created but could not be completed')
         }
       }
       
@@ -2093,7 +1940,7 @@ const Modal = () => {
         } catch (error) {
       console.error('Error creating B2B draft order:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      setValidationErrors([`Failed to create draft order: ${errorMessage}`])
+      setValidationErrors([`❌ Failed to create order: ${errorMessage}. Please try again or contact support.`])
     }
   }, [selectedCustomer, selectedLocation, poNumber, quantityValidation, cartItems, orderTotal, b2bPricing, orderNumber, deliveryFee, deliveryMethod, finalTotal])
 
@@ -2142,17 +1989,22 @@ const Modal = () => {
   // Screen renderers
   const renderCustomerScreen = () => (
     <>
-      <Text>Select Customer</Text>
+      <Text variant="headingLarge">Select Your Customer</Text>
+      <Text>Choose the customer for this B2B wholesale order</Text>
+      <Text> </Text>
       
       {customersLoading ? (
-        <Text>Loading customers...</Text>
+        <>
+          <Text>Loading customers...</Text>
+          <Text>Please wait while we fetch your customer list</Text>
+        </>
       ) : customers.length > 0 ? (
         <ScrollView>
           {customers.map(customer => (
             <>
             <Button
                 key={customer.id}
-                title={`${customer.name.padEnd(25, ' ')}${customer.email ? `\n${customer.email.padEnd(25, ' ')}` : ''}`}
+                title={`${customer.name}${customer.email ? `\nEmail: ${customer.email}` : ''}${customer.hasPosOrders ? '\nPrevious POS Orders' : ''}`}
               onPress={() => {
                   handleCustomerSelection(customer)
                 }}
@@ -2163,12 +2015,16 @@ const Modal = () => {
           ))}
         </ScrollView>
       ) : (
-        <Text>No customers found</Text>
+        <>
+          <Text>No customers found</Text>
+          <Text>Please ensure customers are available in your store</Text>
+        </>
       )}
       
       {selectedCustomer && (
         <>
-          <Button title="Continue" onPress={goToNextScreen} />
+          <Text>Selected: {selectedCustomer.name}</Text>
+          <Button title="Continue to Company Selection" onPress={goToNextScreen} />
         </>
         )}
     </>
@@ -2176,9 +2032,8 @@ const Modal = () => {
 
   const renderLocationScreen = () => (
     <>
-      <Text variant="headingLarge">Select a company:</Text>
-      
-      <Text> </Text>
+      <Text variant="headingLarge">Select Company Location</Text>
+      <Text>Choose the company location for B2B pricing and fulfillment</Text>
       <Text> </Text>
       
       {availableCompanies.length > 0 ? (
@@ -2205,15 +2060,12 @@ const Modal = () => {
                       setSelectedLocation(newLocation)
                       
                       // Fetch company addresses
-                      console.log('Fetching company addresses...')
                       await fetchCompanyAddresses(catalogInfo.companyId, company.name)
                       
                       // Fetch tax data for the selected location
-                      console.log('Fetching tax data for location...')
                       await fetchTaxData(catalogInfo.locationId)
                       
                       // Fetch B2B contextual pricing for the selected company
-                      console.log('Fetching B2B pricing for selected company...')
                       const { pricing, rules } = await fetchB2BPricingForCart(catalogInfo)
                       setB2bPricing(pricing)
                       setQuantityRules(rules)
@@ -2223,9 +2075,6 @@ const Modal = () => {
                       if (items && items.length > 0) {
                         await fetchProductImages(items)
                       }
-                      
-                      // Company selection completed, ready for next step
-                      console.log('Company selection completed, ready for next step')
                     } else {
                       console.error(`Failed to fetch ${company.name} location`)
                     }
@@ -2249,17 +2098,22 @@ const Modal = () => {
         </Text>
       )}
 
-
+      {selectedCompany && (
+        <>
+          <Text>Company Selected</Text>
+          <Text>B2B pricing and location data loaded</Text>
+        </>
+      )}
 
       <Button
-        title="Next"
+        title="Continue to Cart Review"
         onPress={goToNextScreen}
         isDisabled={!selectedCompany || !selectedCustomer}
       />
       
       <Text> </Text>
       
-      <Button title="Back" onPress={goToPreviousScreen} />
+      <Button title="Back to Customer Selection" onPress={goToPreviousScreen} />
     </>
   )
 
@@ -2267,18 +2121,19 @@ const Modal = () => {
     <>
       {/* Back Arrow Label */}
       <Button
-        title="← Back"
+        title="← Back to Company Selection"
         type="basic"
         onPress={() => setCurrentScreen('location')}
       />
       <Text> </Text>
       
       {/* Header */}
-      <Text variant="headingLarge">Cart Review</Text>
+      <Text variant="headingLarge">Cart Review & Verification</Text>
+      <Text>Review your order details and verify B2B pricing</Text>
       <Text> </Text>
       
       {/* Company Information */}
-      <Text variant="headingLarge">Company Information</Text>
+      <Text variant="headingLarge">Order Information</Text>
       <Text>Customer: {selectedCustomer?.name || 'No customer selected'}</Text>
       <Text>Company: {companyName || 'No company selected'}</Text>
       <Text> </Text>
@@ -2302,13 +2157,13 @@ const Modal = () => {
       <Text> </Text>
       
       <Button
-        title="Change Location"
+        title="Change Company Location"
         onPress={() => setCurrentScreen('location')}
       />
       <Text> </Text>
 
       {/* Cart Items */}
-      <Text variant="headingLarge">Cart Items ({cartItems.reduce((total, item) => total + item.quantity, 0)})</Text>
+      <Text variant="headingLarge">Cart Items ({cartItems.reduce((total, item) => total + item.quantity, 0)} items)</Text>
       <Text> </Text>
       
       {cartItems.length > 0 ? (
@@ -2340,7 +2195,7 @@ const Modal = () => {
                 <Text> </Text>
                 
                 <Button
-                  title="View Details"
+                  title="View Details & Adjust"
                   onPress={() => {
                     setSelectedProduct(item)
                     setProductDetailSource('cart')
@@ -2364,14 +2219,15 @@ const Modal = () => {
           {!quantityValidation.isValid && (
             <>
               <Text> </Text>
-            <Text>⚠️ {quantityValidation.errors.length} items below minimum quantities</Text>
+            <Text>{quantityValidation.errors.length} items below minimum quantities</Text>
+              <Text>Please adjust quantities to meet B2B requirements</Text>
               <Text> </Text>
             </>
           )}
           
           {!quantityValidation.isValid && (
             <Button
-              title="View Quantity Issues"
+              title="Fix Quantity Issues"
               onPress={() => setCurrentScreen('quantity')}
             />
           )}
@@ -2379,6 +2235,7 @@ const Modal = () => {
       ) : (
         <>
         <Text>No items in cart</Text>
+          <Text>Add products to create your B2B order</Text>
           <Text> </Text>
         </>
       )}
@@ -2386,13 +2243,13 @@ const Modal = () => {
       <Text> </Text>
 
       <Button
-        title="Checkout"
+        title="Proceed to Delivery Options"
         onPress={goToNextScreen}
         isDisabled={cartItems.length === 0 || !quantityValidation.isValid}
       />
       <Text> </Text>
       
-      <Button title="Back" onPress={goToPreviousScreen} />
+      <Button title="Back to Company Selection" onPress={goToPreviousScreen} />
     </>
   )
 
@@ -2400,15 +2257,15 @@ const Modal = () => {
     <>
       {/* Back Arrow Label */}
       <Button
-        title="← Back"
+        title="← Back to Cart Review"
         type="basic"
         onPress={() => setCurrentScreen('cart')}
       />
       <Text> </Text>
       
       {/* Header */}
-      <Text variant="headingLarge">Quantity Issues</Text>
-      
+      <Text variant="headingLarge">Quantity Requirements</Text>
+      <Text>Adjust quantities to meet B2B wholesale requirements</Text>
       <Text> </Text>
 
       {/* Quantity Issues List - Only show items with validation errors */}
@@ -2435,7 +2292,8 @@ const Modal = () => {
         if (itemsWithIssues.length === 0) {
         return (
             <>
-            <Text>✅ All items meet quantity requirements!</Text>
+            <Text>All items meet quantity requirements!</Text>
+              <Text>Your order is ready to proceed</Text>
               <Text> </Text>
             </>
           )
@@ -2445,7 +2303,7 @@ const Modal = () => {
           <>
             {/* Items Below Minimum Quantity Heading */}
             <Text>{itemsWithIssues.length === 1 ? '1 Item Below Minimum Quantity' : `${itemsWithIssues.length} Items Below Minimum Quantity`}</Text>
-            
+            <Text>Please adjust quantities to meet B2B requirements</Text>
             <Text> </Text>
             
             {itemsWithIssues.map((item, index) => {
@@ -2479,14 +2337,14 @@ const Modal = () => {
               <Text> </Text>
               
               <Text>
-                Qty: {item.quantity} | 
+                Current Qty: {item.quantity} | 
                 Total Price: {formatCurrency(itemSubtotal)}
               </Text>
               
               <Text> </Text>
               
               <Button
-                title="Update Quantity"
+                title="Adjust Quantity"
                 onPress={() => {
                   setSelectedProduct(item)
                   setProductDetailSource('quantity')
@@ -2505,14 +2363,14 @@ const Modal = () => {
       <Text> </Text>
 
       <Button
-        title="✅ Continue to Delivery"
+        title="Continue to Delivery Options"
         onPress={goToNextScreen}
         isDisabled={!quantityValidation.isValid}
       />
       
       <Text> </Text>
       
-      <Button title="Back to Cart" onPress={goToPreviousScreen} />
+      <Button title="Back to Cart Review" onPress={goToPreviousScreen} />
     </>
   )
 
@@ -2653,7 +2511,7 @@ const Modal = () => {
         
         {/* Increase Button */}
         <Button
-          title="＋"
+          title="+"
           onPress={() => {
             const increment = rules?.increment || 1
             const maxQty = rules?.maxQuantity
@@ -2675,7 +2533,7 @@ const Modal = () => {
         
         {/* Primary Action Buttons */}
         <Button
-          title="✅ Update Cart"
+          title="Update Cart"
           onPress={() => {
             if (productDetailSource === 'cart') {
               setCurrentScreen('cart')
@@ -2690,7 +2548,7 @@ const Modal = () => {
         
         {/* Secondary Action Buttons */}
         <Button
-          title="🗑️ Remove from Cart"
+          title="Remove from Cart"
           onPress={() => {
             // Remove item from cart
             const updatedCartItems = cartItems.filter(item => item.id !== selectedProduct.id)
@@ -2729,37 +2587,39 @@ const Modal = () => {
     <>
       {/* Back Arrow Label */}
       <Button
-        title="← Back"
+        title="← Back to Cart Review"
         type="basic"
         onPress={() => setCurrentScreen(quantityValidation.isValid ? 'cart' : 'quantity')}
       />
       <Text> </Text>
       
-      <Text variant="headingLarge">Delivery Options</Text>
+      <Text variant="headingLarge">Delivery & Order Details</Text>
+      <Text>Complete your B2B wholesale order with delivery options</Text>
+      <Text> </Text>
       
       <TextField
-        label="PO Number *"
+        label="Purchase Order Number *"
         value={poNumber}
         onChange={setPoNumber}
-        placeholder="Enter PO number..."
-        error={!poNumber ? "PO Number is required" : undefined}
+        placeholder="Enter your PO number..."
+        error={!poNumber ? "PO Number is required for B2B orders" : undefined}
       />
 
       <Text>Select Delivery Method:</Text>
       
       <ScrollView>
       <Button 
-          title={`🏪 Store Pickup - FREE${deliveryMethod === 'pickup' ? ' ✓' : ''}`}
+          title={`Store Pickup - FREE${deliveryMethod === 'pickup' ? ' ✓' : ''}`}
           onPress={() => setDeliveryMethod('pickup')} 
       />
         
       <Button 
-          title={`🚚 Economy Delivery - $${economyFee}${deliveryMethod === 'economy' ? ' ✓' : ''}`}
+          title={`Economy Delivery - $${economyFee}${deliveryMethod === 'economy' ? ' ✓' : ''}`}
           onPress={() => setDeliveryMethod('economy')} 
       />
         
       <Button 
-          title={`🚛 Standard Delivery - $${standardFee}${deliveryMethod === 'standard' ? ' ✓' : ''}`}
+          title={`Standard Delivery - $${standardFee}${deliveryMethod === 'standard' ? ' ✓' : ''}`}
           onPress={() => setDeliveryMethod('standard')} 
       />
       </ScrollView>
@@ -2782,21 +2642,32 @@ const Modal = () => {
         />
       )}
 
-      <Text>Order Summary:</Text>
+      <Text variant="headingLarge">Order Summary</Text>
       <Text>Total Items: {cartItems.reduce((total, item) => total + item.quantity, 0)}</Text>
       <Text>Subtotal: {formatCurrency(orderTotal)}</Text>
       <Text>{taxData?.title || 'Tax'} ({taxData ? Math.round(taxData.rate * 100) : 0}%): {formatCurrency(taxAmount)}</Text>
       <Text>Shipping: {formatCurrency(deliveryFee)}</Text>
-      <Text>Total: {formatCurrency(finalTotal)}</Text>
+      <Text variant="headingLarge">Total: {formatCurrency(finalTotal)}</Text>
       <Text>Net Terms: {selectedPaymentTerms ? formatNetTerms(selectedPaymentTerms) : 'N/A'}</Text>
 
+      {/* Validation Errors */}
+      {validationErrors.length > 0 && (
+        <>
+          <Text> </Text>
+          {validationErrors.map((error, index) => (
+            <Text key={index} variant="headingLarge">{error}</Text>
+          ))}
+          <Text> </Text>
+        </>
+      )}
+
       <Button
-        title="Create Order"
+        title="Create B2B Order"
         onPress={createB2BOrder}
         isDisabled={cartItems.length === 0 || !quantityValidation.isValid || !poNumber || poNumber.trim() === ''}
       />
       
-      <Button title="Back" onPress={goToPreviousScreen} />
+      <Button title="Back to Cart Review" onPress={goToPreviousScreen} />
     </>
   )
 
@@ -2804,17 +2675,19 @@ const Modal = () => {
     <>
       {/* Back Arrow Label */}
       <Button
-        title="← Back"
+        title="← Back to Delivery Options"
         type="basic"
         onPress={() => setCurrentScreen('delivery')}
       />
       <Text> </Text>
       
-      <Text variant="headingLarge">✅ Draft Order Created Successfully!</Text>
+      <Text variant="headingLarge">Order Created Successfully!</Text>
+      <Text>Your B2B wholesale order has been processed</Text>
+      <Text> </Text>
       
       {createdOrder && (
         <>
-          <Text>📋 Order Details:</Text>
+          <Text variant="headingLarge">Order Details</Text>
           <Text>Order Name: {createdOrder.shopifyOrderName || orderNumber}</Text>
           <Text>Order #: {orderNumber}</Text>
           <Text>Customer: {createdOrder.customer?.name}</Text>
@@ -2822,12 +2695,12 @@ const Modal = () => {
           <Text>PO Number: {createdOrder.poNumber || poNumber}</Text>
           
           <Text> </Text>
-          <Text>Order Summary:</Text>
+          <Text variant="headingLarge">Order Summary</Text>
           <Text>Total Items: {cartItems.reduce((total, item) => total + item.quantity, 0)}</Text>
           <Text>Subtotal: {formatCurrency(createdOrder.subtotal)}</Text>
           <Text>{taxData?.title || 'Tax'} ({taxData ? Math.round(taxData.rate * 100) : 0}%): {formatCurrency(createdOrder.tax ?? 0)}</Text>
           <Text>Shipping: {formatCurrency(createdOrder.deliveryFee ?? 0)}</Text>
-          <Text>Total: {formatCurrency(createdOrder.total)}</Text>
+          <Text variant="headingLarge">Total: {formatCurrency(createdOrder.total)}</Text>
           <Text>Net Terms: {selectedPaymentTerms ? formatNetTerms(selectedPaymentTerms) : 'N/A'}</Text>
           {selectedPaymentTerms && (
             <Text>Payment Type: {selectedPaymentTerms.paymentTermsType}</Text>
@@ -2835,11 +2708,16 @@ const Modal = () => {
           
           {createdOrder.shopifyOrderName && (
             <>
-              
+              <Text> </Text>
+              <Text>Order appears in your Orders section</Text>
+              <Text>Invoice will be sent to customer</Text>
             </>
           )}
         </>
       )}
+
+      <Text> </Text>
+      <Text> </Text>
 
       <Button
         title="Create Another Order"
