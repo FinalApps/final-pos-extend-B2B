@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 
 import { 
-  Text, 
+  Text,
   Screen, 
   ScrollView, 
   Navigator, 
@@ -11,7 +11,9 @@ import {
   Button,
   TextField,
   Banner,
-  Image
+  Image,
+  POSBlock,
+  POSBlockRow
 } from '@shopify/ui-extensions-react/point-of-sale'
 
 
@@ -39,6 +41,7 @@ import {
   calculateOrderTotals,
   logOrderOperation
 } from './utils'
+
 
 // Custom hooks for better separation of concerns
 const useCustomers = () => {
@@ -113,14 +116,150 @@ const useCustomers = () => {
   return { customers, isLoading, fetchCustomers }
 }
 
+// Shop currency detection hook
+const useShopCurrency = () => {
+  const [currency, setCurrency] = useState<string>('USD')
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    async function fetchShopCurrency() {
+      try {
+        setLoading(true)
+        
+        const query = `
+          query GetShopCurrency {
+            shop {
+              id
+              currencyCode
+              currencyFormats {
+                moneyFormat
+                moneyWithCurrencyFormat
+              }
+            }
+          }
+        `
+
+        const response = await fetch('shopify:admin/api/graphql.json', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query })
+        })
+
+        const data = await response.json()
+        const shop = data.data?.shop
+
+        if (shop?.currencyCode) {
+          setCurrency(shop.currencyCode)
+          console.log('Shop currency detected:', {
+            currencyCode: shop.currencyCode,
+            moneyFormat: shop.currencyFormats?.moneyFormat,
+            moneyWithCurrencyFormat: shop.currencyFormats?.moneyWithCurrencyFormat
+          })
+        }
+      } catch (error) {
+        console.error('Error fetching shop currency:', error)
+        // Keep default USD if fetch fails
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchShopCurrency()
+  }, [])
+
+  return { currency, loading }
+}
+
+// Simple B2B customer detection hook
+const useB2BCustomerDetection = (customerId: string | null) => {
+  const [isB2B, setIsB2B] = useState<boolean | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    async function detectB2BCustomer() {
+      if (!customerId) {
+        setIsB2B(null)
+        return
+      }
+
+      try {
+        setLoading(true)
+        
+        const customerQuery = `
+          query getCustomerB2BStatus($id: ID!) {
+            customer(id: $id) {
+              id
+              email
+              taxExempt
+              tags
+              company {
+                id
+                name
+              }
+              companyContactProfiles {
+                id
+              }
+            }
+          }
+        `
+
+        const response = await fetch('shopify:admin/api/graphql.json', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            query: customerQuery,
+            variables: { id: customerId }
+          })
+        })
+
+        const data = await response.json()
+        const customer = data.data?.customer
+
+        if (customer) {
+          // Determine if B2B based on multiple signals
+          const isB2BCustomer = 
+            customer.taxExempt ||
+            customer.company ||
+            customer.companyContactProfiles?.length > 0 ||
+            (customer.tags || []).some((tag: string) =>
+              ["B2B", "Wholesale", "Corporate", "Business"].includes(tag)
+            )
+
+          setIsB2B(isB2BCustomer)
+          console.log('B2B Customer Detection:', {
+            customerId: customer.id,
+            email: customer.email,
+            taxExempt: customer.taxExempt,
+            hasCompany: !!customer.company,
+            hasCompanyContact: customer.companyContactProfiles?.length > 0,
+            tags: customer.tags,
+            isB2B: isB2BCustomer
+          })
+        } else {
+          setIsB2B(false)
+        }
+      } catch (error) {
+        console.error('Error detecting B2B customer:', error)
+        setIsB2B(false)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    detectB2BCustomer()
+  }, [customerId])
+
+  return { isB2B, loading }
+}
+
 const useCompanyData = () => {
   const [companyId, setCompanyId] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string | null>(null)
   const [priceListInfo, setPriceListInfo] = useState<{id: string, name: string, currency: string} | null>(null)
   const [locationCatalogInfo, setLocationCatalogInfo] = useState<{id: string, title: string, status: string, locationId?: string, companyName?: string, companyId?: string} | null>(null)
-  const [availableCompanies, setAvailableCompanies] = useState<{id: string, name: string}[]>([])
+  const [availableCompanies, setAvailableCompanies] = useState<{id: string, name: string, shippingAddress?: {address1?: string, city?: string, country?: string}, billingAddress?: {address1?: string, city?: string, country?: string}}[]>([])
   const [companiesLoading, setCompaniesLoading] = useState(false)
-  const [companyAddresses, setCompanyAddresses] = useState<{[companyId: string]: {shippingAddress?: {address1: string, city: string, country: string, zip: string}, billingAddress?: {address1: string, city: string, country: string, zip: string}, locationName?: string}}>({})
+  const [companyAddresses, setCompanyAddresses] = useState<{[companyId: string]: {shippingAddress?: {address1?: string, city?: string, country?: string}, billingAddress?: {address1?: string, city?: string, country?: string}, locationName?: string}}>({})
 
   const fetchCustomerCompany = useCallback(async (customerName: string): Promise<string | null> => {
     try {
@@ -268,59 +407,49 @@ const useCompanyData = () => {
 
   const fetchCustomerCompanies = useCallback(async (customerName: string) => {
     try {
+      console.log(`Fetching company locations for customer: ${customerName}`)
       setCompaniesLoading(true)
       
-      const query = `
-        query GetCustomerCompanies($customerName: String!) {
+      // First, get the customer ID by searching for the customer
+      const customerSearchQuery = `
+        query GetCustomerId($customerName: String!) {
           customers(first: 250, query: $customerName) {
                   edges {
                     node {
                       id
                 displayName
-                companyContactProfiles {
-                  company {
-                id
-                name
-                    locations(first: 1) {
-              edges {
-                node {
-                  id
-                  name
-                        }
-                      }
-                    }
-                  }
-                  }
                 }
               }
             }
           }
         `
 
-      const response = await fetch('shopify:admin/api/graphql.json', {
+      const searchResponse = await fetch('shopify:admin/api/graphql.json', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          query,
+          query: customerSearchQuery,
           variables: { customerName: `name:${customerName}` }
         })
       })
 
-      if (!response.ok) {
-        console.error('Failed to fetch customer companies:', response.status)
+      if (!searchResponse.ok) {
+        console.error('Failed to search for customer:', searchResponse.status)
         return []
       }
 
-      const result = await response.json()
+      const searchResult = await searchResponse.json()
       
-      if (result.errors) {
-        console.error('GraphQL errors in customer companies query:', result.errors)
+      if (searchResult.errors) {
+        console.error('GraphQL errors in customer search:', searchResult.errors)
         return []
       }
 
-      const customers = result.data?.customers?.edges?.map((edge: any) => edge.node) || []
+      const customers = searchResult.data?.customers?.edges?.map((edge: any) => edge.node) || []
+      console.log(`Found ${customers.length} customers matching "${customerName}"`)
       
       if (customers.length === 0) {
+        console.log('No customers found')
         return []
       }
 
@@ -329,17 +458,101 @@ const useCompanyData = () => {
         customer.displayName.toLowerCase() === customerName.toLowerCase()
       ) || customers[0]
 
-      // Extract companies from customer's company contact profiles
-      const companies = exactCustomer.companyContactProfiles?.map((profile: any) => ({
-        id: profile.company.id,
-        name: profile.company.name,
-        hasLocation: profile.company.locations?.edges?.length > 0
-      })).filter((company: any) => company.hasLocation) || []
+      console.log(`Selected customer: ${exactCustomer.displayName} (ID: ${exactCustomer.id})`)
+
+      if (!exactCustomer?.id) {
+        console.error('Customer ID not found')
+        return []
+      }
+
+      // Now fetch company locations assigned to this customer via role assignments
+      const companyLocationsQuery = `
+        query GetCustomerCompanyLocations($customerId: ID!) {
+          customer(id: $customerId) {
+            companyContactProfiles {
+              id
+              roleAssignments(first: 10) {
+                nodes {
+                  companyLocation {
+                    id
+                    name
+                    shippingAddress {
+                      address1
+                      city
+                      country
+                    }
+                    billingAddress {
+                      address1
+                      city
+                      country
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `
+
+      const locationsResponse = await fetch('shopify:admin/api/graphql.json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          query: companyLocationsQuery,
+          variables: { customerId: exactCustomer.id }
+        })
+      })
+
+      if (!locationsResponse.ok) {
+        console.error('Failed to fetch customer company locations:', locationsResponse.status)
+        return []
+      }
+
+      const locationsResult = await locationsResponse.json()
       
-      setAvailableCompanies(companies)
-      return companies
+      if (locationsResult.errors) {
+        console.error('GraphQL errors in company locations query:', locationsResult.errors)
+        return []
+      }
+
+      console.log('Company locations query result:', locationsResult.data)
+
+      // Extract company locations from role assignments
+      const companyLocations: any[] = []
+      const customer = locationsResult.data?.customer
+      
+      if (customer?.companyContactProfiles) {
+        console.log(`Found ${customer.companyContactProfiles.length} company contact profiles`)
+        customer.companyContactProfiles.forEach((profile: any) => {
+          if (profile.roleAssignments?.nodes) {
+            console.log(`Profile ${profile.id} has ${profile.roleAssignments.nodes.length} role assignments`)
+            profile.roleAssignments.nodes.forEach((assignment: any) => {
+              if (assignment.companyLocation) {
+                const location = assignment.companyLocation
+                console.log(`Found company location: ${location.name} (${location.id})`)
+                // Avoid duplicates by checking if location already exists
+                const existingLocation = companyLocations.find(loc => loc.id === location.id)
+                if (!existingLocation) {
+                  companyLocations.push({
+                    id: location.id,
+                    name: location.name,
+                    shippingAddress: location.shippingAddress,
+                    billingAddress: location.billingAddress
+                  })
+                }
+              }
+            })
+          }
+        })
+      } else {
+        console.log('No company contact profiles found for customer')
+      }
+      
+      console.log(`Total company locations found: ${companyLocations.length}`)
+      setAvailableCompanies(companyLocations)
+      return companyLocations
     } catch (error) {
-      console.error('Error fetching customer companies:', error)
+      console.error('Error fetching customer company locations:', error)
       return []
     } finally {
       setCompaniesLoading(false)
@@ -767,6 +980,175 @@ const useCompanyData = () => {
     }
   }, [])
 
+  const calculateTax = useCallback(async (cartItems: any[], companyLocationId: string, companyId: string, companyContactId: string, shippingAddress: any, currency: string = 'USD') => {
+    try {
+      console.log('Calculating tax for:', { cartItems, companyLocationId, companyId, companyContactId, shippingAddress })
+      
+      if (!cartItems.length || !companyLocationId || !companyId || !companyContactId || !shippingAddress) {
+        console.log('Missing required data for tax calculation')
+        return { totalTax: 0, taxLines: [], subtotal: 0, total: 0 }
+      }
+
+      // Filter out items with invalid variant IDs
+      const validCartItems = cartItems.filter(item => item.variantId && item.variantId !== '0' && item.variantId !== 0)
+      
+      if (!validCartItems.length) {
+        console.log('No valid cart items with proper variant IDs for tax calculation')
+        return { totalTax: 0, taxLines: [], subtotal: 0, total: 0 }
+      }
+
+      console.log('Valid cart items for tax calculation:', validCartItems.map(item => ({
+        variantId: item.variantId,
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price
+      })))
+
+
+      const mutation = `
+        mutation DraftOrderCalculate($input: DraftOrderInput!) {
+          draftOrderCalculate(input: $input) {
+            calculatedDraftOrder {
+              totalTaxSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+              taxLines {
+                title
+                rate
+                ratePercentage
+                priceSet {
+                  shopMoney {
+                    amount
+                    currencyCode
+                  }
+                }
+              }
+              totalPriceSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+              subtotalPriceSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+              purchasingEntity {
+                ... on PurchasingCompany {
+                  company {
+                    name
+                  }
+                  location {
+                    name
+                  }
+                }
+              }
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `
+
+      const variables = {
+        input: {
+          purchasingEntity: {
+            purchasingCompany: {
+              companyId: companyId.startsWith('gid://') ? companyId : `gid://shopify/Company/${companyId}`,
+              companyLocationId: companyLocationId.startsWith('gid://') ? companyLocationId : `gid://shopify/CompanyLocation/${companyLocationId}`,
+              companyContactId: companyContactId.startsWith('gid://') ? companyContactId : `gid://shopify/CompanyContact/${companyContactId}`
+            }
+          },
+          shippingAddress: {
+            address1: shippingAddress.address1 || '',
+            city: shippingAddress.city || '',
+            provinceCode: shippingAddress.provinceCode || '',
+            countryCode: shippingAddress.countryCode || 'US',
+            zip: shippingAddress.zip || ''
+          },
+          billingAddress: {
+            address1: shippingAddress.address1 || '',
+            city: shippingAddress.city || '',
+            provinceCode: shippingAddress.provinceCode || '',
+            countryCode: shippingAddress.countryCode || 'US',
+            zip: shippingAddress.zip || ''
+          },
+          taxExempt: false,
+          lineItems: validCartItems.map(item => ({
+            variantId: item.variantId.startsWith('gid://') ? item.variantId : `gid://shopify/ProductVariant/${item.variantId}`,
+            quantity: item.quantity,
+            originalUnitPrice: item.price?.toString() || '0.00',
+            taxable: true,
+            requiresShipping: true
+          })),
+          presentmentCurrencyCode: currency
+        }
+      }
+
+      console.log('Tax calculation input:', JSON.stringify(variables, null, 2))
+
+      const response = await fetch('shopify:admin/api/graphql.json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          query: mutation,
+          variables 
+        })
+      })
+
+      if (!response.ok) {
+        console.error('Failed to calculate tax:', response.status)
+        return { totalTax: 0, taxLines: [], subtotal: 0, total: 0 }
+      }
+
+      const result = await response.json()
+
+      console.log('Tax calculation response:', JSON.stringify(result, null, 2))
+
+      if (result.errors) {
+        console.error('GraphQL errors in tax calculation:', result.errors)
+        return { totalTax: 0, taxLines: [], subtotal: 0, total: 0 }
+      }
+
+      if (result.data?.draftOrderCalculate?.userErrors?.length > 0) {
+        console.error('Tax calculation user errors:', result.data.draftOrderCalculate.userErrors)
+        return { totalTax: 0, taxLines: [], subtotal: 0, total: 0 }
+      }
+
+      const calculatedOrder = result.data?.draftOrderCalculate?.calculatedDraftOrder
+      
+      if (!calculatedOrder) {
+        console.log('No calculated order returned')
+        return { totalTax: 0, taxLines: [], subtotal: 0, total: 0 }
+      }
+
+      const totalTax = parseFloat(calculatedOrder.totalTaxSet?.shopMoney?.amount || '0')
+      const subtotal = parseFloat(calculatedOrder.subtotalPriceSet?.shopMoney?.amount || '0')
+      const total = parseFloat(calculatedOrder.totalPriceSet?.shopMoney?.amount || '0')
+      const taxLines = calculatedOrder.taxLines || []
+
+      console.log('Tax calculation result:', { totalTax, subtotal, total, taxLines })
+
+      return {
+        totalTax,
+        taxLines,
+        subtotal,
+        total
+      }
+
+    } catch (error) {
+      console.error('Error calculating tax:', error)
+      return { totalTax: 0, taxLines: [], subtotal: 0, total: 0 }
+    }
+  }, [])
+
               return {
     companyId,
     companyName,
@@ -775,6 +1157,7 @@ const useCompanyData = () => {
     availableCompanies,
     companiesLoading,
     companyAddresses,
+    setCompanyAddresses,
     fetchCustomerCompany,
     fetchCatalogData,
     fetchCompanyLocationId,
@@ -782,7 +1165,8 @@ const useCompanyData = () => {
     fetchAllCompanies,
     fetchProductVariants,
     fetchContextualPricing,
-    fetchCompanyAddresses
+    fetchCompanyAddresses,
+    calculateTax
   }
 }
 
@@ -1113,8 +1497,9 @@ const Modal = () => {
   // Custom hooks
   const { customers, isLoading: customersLoading, fetchCustomers } = useCustomers()
   const { locations, isLoading: locationsLoading, fetchLocations } = useStoreLocations()
-  const { companyId, companyName, priceListInfo, locationCatalogInfo, availableCompanies, companiesLoading, companyAddresses, fetchCustomerCompany, fetchCatalogData, fetchCompanyLocationId, fetchCustomerCompanies, fetchAllCompanies, fetchProductVariants, fetchContextualPricing, fetchCompanyAddresses } = useCompanyData()
+  const { companyId, companyName, priceListInfo, locationCatalogInfo, availableCompanies, companiesLoading, companyAddresses, setCompanyAddresses, fetchCustomerCompany, fetchCatalogData, fetchCompanyLocationId, fetchCustomerCompanies, fetchAllCompanies, fetchProductVariants, fetchContextualPricing, fetchCompanyAddresses, calculateTax } = useCompanyData()
   const { cartItems, isLoading: cartLoading, loadCartItems, updateItemQuantity, setCartItems } = useCart(apiData, fetchCartDetails)
+  const { currency: shopCurrency, loading: currencyLoading } = useShopCurrency()
 
   // State
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
@@ -1122,11 +1507,116 @@ const Modal = () => {
   const [selectedLocation, setSelectedLocation] = useState<any>(null)
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null)
   const [poNumber, setPoNumber] = useState('')
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('')
   const [deliveryMethod, setDeliveryMethod] = useState('pickup')
+  const [taxInfo, setTaxInfo] = useState<{totalTax: number, taxLines: any[], subtotal: number, total: number} | null>(null)
+
+  // B2B customer detection
+  const { isB2B, loading: b2bDetectionLoading } = useB2BCustomerDetection(selectedCustomerId)
+
+  // Currency formatting helper
+  const formatCurrencyWithShop = useCallback((amount: number) => {
+    return formatCurrency(amount, shopCurrency)
+  }, [shopCurrency])
+
+  // Filter customers based on search term
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearchTerm.trim()) {
+      return customers
+    }
+    
+    const searchLower = customerSearchTerm.toLowerCase()
+    return customers.filter(customer => 
+      customer.name.toLowerCase().includes(searchLower) ||
+      (customer.email && customer.email.toLowerCase().includes(searchLower))
+    )
+  }, [customers, customerSearchTerm])
   
   const [economyFee, setEconomyFee] = useState('15.00')
   const [standardFee, setStandardFee] = useState('25.00')
+  const [customDeliveryFee, setCustomDeliveryFee] = useState('0.00')
+  const [customDeliveryName, setCustomDeliveryName] = useState('')
+  const [customSurcharge, setCustomSurcharge] = useState('0.00')
+  const [surchargeDescription, setSurchargeDescription] = useState('')
   const [quantityRules, setQuantityRules] = useState<Record<string, QuantityRules>>({})
+
+  // Surcharge detection helper functions
+  const isSurchargeItem = useCallback((item: any) => {
+    // Check custom attributes for explicit surcharge marking
+    if (item.customAttributes) {
+      const surchargeAttr = item.customAttributes.find((attr: any) => 
+        attr.key === "Type" && attr.value === "Surcharge"
+      )
+      if (surchargeAttr) return true
+    }
+    
+    // Check for surcharge keywords in name/title (backup method)
+    const surchargeKeywords = ['surcharge', 'fee', 'charge', 'delivery', 'handling', 'rush']
+    const name = (item.name || item.title || '').toLowerCase()
+    return surchargeKeywords.some(keyword => name.includes(keyword))
+  }, [])
+
+  const isTaxableSurcharge = useCallback((item: any) => {
+    if (!isSurchargeItem(item)) return false
+    
+    // Check custom attributes for tax status
+    if (item.customAttributes) {
+      const taxableAttr = item.customAttributes.find((attr: any) => 
+        attr.key === "Taxable"
+      )
+      if (taxableAttr) {
+        return taxableAttr.value === "Yes" || taxableAttr.value === "true"
+      }
+    }
+    
+    // Default to taxable for surcharges (can be overridden)
+    return true
+  }, [isSurchargeItem])
+
+  const getSurchargeType = useCallback((item: any) => {
+    if (!isSurchargeItem(item)) return null
+    
+    // Check custom attributes for surcharge type
+    if (item.customAttributes) {
+      const typeAttr = item.customAttributes.find((attr: any) => 
+        attr.key === "Type"
+      )
+      if (typeAttr) return typeAttr.value
+    }
+    
+    // Determine type from name/title keywords
+    const name = (item.name || item.title || '').toLowerCase()
+    if (name.includes('delivery')) return 'Delivery Fee'
+    if (name.includes('rush')) return 'Rush Order Fee'
+    if (name.includes('handling')) return 'Handling Fee'
+    return 'Custom Surcharge'
+  }, [isSurchargeItem])
+  // Separate cart items into products and surcharges
+  const { productItems, surchargeItems } = useMemo(() => {
+    const products = cartItems.filter(item => !isSurchargeItem(item))
+    const surcharges = cartItems.filter(item => isSurchargeItem(item))
+    
+    return {
+      productItems: products,
+      surchargeItems: surcharges
+    }
+  }, [cartItems, isSurchargeItem])
+
+  // Calculate surcharge totals
+  const surchargeTotals = useMemo(() => {
+    const taxableSurcharges = surchargeItems.filter(item => isTaxableSurcharge(item))
+    const nonTaxableSurcharges = surchargeItems.filter(item => !isTaxableSurcharge(item))
+    
+    return {
+      totalSurcharges: surchargeItems.reduce((sum, item) => sum + (item.price * item.quantity), 0),
+      taxableSurcharges: taxableSurcharges.reduce((sum, item) => sum + (item.price * item.quantity), 0),
+      nonTaxableSurcharges: nonTaxableSurcharges.reduce((sum, item) => sum + (item.price * item.quantity), 0),
+      surchargeItems: surchargeItems,
+      taxableSurchargeItems: taxableSurcharges,
+      nonTaxableSurchargeItems: nonTaxableSurcharges
+    }
+  }, [surchargeItems, isTaxableSurcharge])
+
   const [b2bPricing, setB2bPricing] = useState<Record<string, any>>({})
   const [productImages, setProductImages] = useState<Record<string, string>>({})
   const [paymentTerms, setPaymentTerms] = useState<any>(null)
@@ -1138,12 +1628,112 @@ const Modal = () => {
   const [validationErrors, setValidationErrors] = useState<string[]>([])
   const [orderNumber] = useState(generateOrderNumber())
   const [createdOrder, setCreatedOrder] = useState<B2BOrder | null>(null)
-  const [taxData, setTaxData] = useState<{rate: number, amount: number, title: string} | null>(null)
+  const [storeTaxSettings, setStoreTaxSettings] = useState<{taxesIncluded: boolean, taxShipping: boolean, countryCode: string} | null>(null)
+  const [customerTaxExempt, setCustomerTaxExempt] = useState<boolean>(false)
+  const [locationData, setLocationData] = useState<any>(null)
 
-  // Fetch tax data for the selected location
-  const fetchTaxData = useCallback(async (locationId: string) => {
+  // Fetch store tax settings
+  const fetchStoreTaxSettings = useCallback(async () => {
     try {
-      console.log(`Fetching tax data for location: ${locationId}`)
+      console.log('Fetching store tax settings')
+      
+      const query = `
+        query GetShopSettings {
+          shop {
+            id
+            name
+            taxesIncluded
+            taxShipping
+            countryCode
+            currencyCode
+            taxSettings {
+              taxCalculationMethod
+              taxIncluded
+            }
+          }
+        }
+      `
+
+      const response = await fetch('shopify:admin/api/graphql.json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query })
+      })
+
+      const result = await response.json()
+      console.log('Store tax settings response:', result)
+
+      if (result.data?.shop) {
+        const shop = result.data.shop
+        const taxSettings = {
+          taxesIncluded: shop.taxesIncluded || shop.taxSettings?.taxIncluded || false,
+          taxShipping: shop.taxShipping || false,
+          countryCode: shop.countryCode || 'US'
+        }
+        
+        setStoreTaxSettings(taxSettings)
+        console.log('Store tax settings loaded:', taxSettings)
+        return taxSettings
+      }
+      
+      return null
+    } catch (error) {
+      console.error('Error fetching store tax settings:', error)
+      return null
+    }
+  }, [])
+
+  // Fetch customer tax exemption status
+  const fetchCustomerTaxStatus = useCallback(async (customerId: string) => {
+    try {
+      console.log(`Fetching tax status for customer: ${customerId}`)
+      
+      const query = `
+        query GetCustomerTaxStatus($customerId: ID!) {
+          customer(id: $customerId) {
+            id
+            taxExempt
+            taxExemptions {
+              id
+              country
+              region
+              taxCode
+            }
+          }
+        }
+      `
+
+      const response = await fetch('shopify:admin/api/graphql.json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          variables: { customerId: `gid://shopify/Customer/${customerId}` }
+        })
+      })
+
+      const result = await response.json()
+      console.log('Customer tax status response:', result)
+
+      if (result.data?.customer) {
+        const isTaxExempt = result.data.customer.taxExempt || false
+        setCustomerTaxExempt(isTaxExempt)
+        console.log('Customer tax exemption status:', isTaxExempt)
+        return isTaxExempt
+      }
+      
+      return false
+    } catch (error) {
+      console.error('Error fetching customer tax status:', error)
+      return false
+    }
+  }, [])
+
+
+  // Fetch location data for tax calculation
+  const fetchLocationData = useCallback(async (locationId: string) => {
+    try {
+      console.log(`Fetching location data for tax calculation: ${locationId}`)
       
       const query = `
         query GetLocationTaxData($locationId: ID!) {
@@ -1174,74 +1764,21 @@ const Modal = () => {
       })
 
       const result = await response.json()
-      console.log(`Tax data response for location ${locationId}:`, result)
+      console.log(`Location data response for ${locationId}:`, result)
 
       if (result.data?.location) {
         const location = result.data.location
-        console.log('Location tax settings:', location.taxSettings)
-        
-        // For now, we'll use a default tax rate based on location
-        // In a real implementation, you'd calculate this based on the location's tax settings
-        let taxRate = 0
-        let taxTitle = 'Tax'
-        
-        if (location.address?.country === 'US') {
-          // Example US tax rates by state
-          switch (location.address?.province) {
-            case 'CA':
-              taxRate = 0.0875 // 8.75% California
-              taxTitle = 'CA Sales Tax'
-              break
-            case 'NY':
-              taxRate = 0.08 // 8% New York
-              taxTitle = 'NY Sales Tax'
-              break
-            case 'TX':
-              taxRate = 0.0625 // 6.25% Texas
-              taxTitle = 'TX Sales Tax'
-              break
-            default:
-              taxRate = 0.07 // 7% default US
-              taxTitle = 'Sales Tax'
-          }
-        } else if (location.address?.country === 'CA') {
-          // Example Canadian tax rates by province
-          switch (location.address?.province) {
-            case 'BC':
-              taxRate = 0.12 // 12% BC (5% GST + 7% PST)
-              taxTitle = 'BC HST'
-              break
-            case 'ON':
-              taxRate = 0.13 // 13% Ontario HST
-              taxTitle = 'ON HST'
-              break
-            case 'AB':
-              taxRate = 0.05 // 5% Alberta GST
-              taxTitle = 'AB GST'
-              break
-            default:
-              taxRate = 0.10 // 10% default Canada
-              taxTitle = 'GST/HST'
-          }
-        }
-        
-        const taxData = {
-          rate: taxRate,
-          amount: 0, // Will be calculated when order total is known
-          title: taxTitle
-        }
-        
-        setTaxData(taxData)
-        console.log('Tax data set:', taxData)
-        return taxData
+        console.log('Location data loaded:', location)
+        return location
       }
       
       return null
     } catch (error) {
-      console.error(`Error fetching tax data for location ${locationId}:`, error)
+      console.error(`Error fetching location data for ${locationId}:`, error)
       return null
     }
   }, [])
+
 
   // Fetch payment terms for draft order
   const fetchPaymentTerms = useCallback(async (draftOrderId: string) => {
@@ -1519,44 +2056,119 @@ const Modal = () => {
   }, [])
 
   // Computed values
-  const orderTotal = useMemo(() => 
-    cartItems.reduce((sum, item) => {
-      const contextualPricing = b2bPricing[item.productId]
-      const b2bPrice = contextualPricing?.price
-      const itemPrice = b2bPrice || item.price
-      return sum + (item.quantity * itemPrice)
-    }, 0)
-  , [cartItems, b2bPricing])
-
   const deliveryFee = useMemo(() => {
     let fee = 0
     switch (deliveryMethod) {
       case 'pickup': 
         fee = 0
         break
-      case 'economy': 
-        fee = parseFloat(economyFee) || 0
-        break
-      case 'standard': 
-        fee = parseFloat(standardFee) || 0
-        break
       default: 
-        fee = 0
+        fee = parseFloat(customDeliveryFee) || 0
     }
     return fee
-  }, [deliveryMethod, economyFee, standardFee])
+  }, [deliveryMethod, customDeliveryFee])
 
-  const taxAmount = useMemo(() => 
-    taxData ? orderTotal * taxData.rate : 0
-  , [orderTotal, taxData])
+  // Custom surcharge calculation
+  const surchargeAmount = useMemo(() => {
+    return parseFloat(customSurcharge) || 0
+  }, [customSurcharge])
 
-  const finalTotal = useMemo(() => 
-    orderTotal + deliveryFee + taxAmount
-  , [orderTotal, deliveryFee, taxAmount])
+  // Total fees (delivery + surcharge)
+  const totalFees = useMemo(() => {
+    return deliveryFee + surchargeAmount
+  }, [deliveryFee, surchargeAmount])
+
+  // Log B2B detection for debugging
+  useEffect(() => {
+    console.log('B2B Detection updated:', {
+      isB2B,
+      b2bDetectionLoading,
+      totalFees,
+      surchargeTotals,
+      productItemsCount: productItems.length,
+      surchargeItemsCount: surchargeItems.length,
+      cartItemsCount: cartItems.length
+    })
+  }, [isB2B, b2bDetectionLoading, totalFees, surchargeTotals, productItems.length, surchargeItems.length, cartItems.length])
+
+  // Reactive tax validation - automatically validate when B2B detection changes
+  useEffect(() => {
+    if (isB2B) {
+      console.log('B2B customer detected - tax will be handled externally')
+    } else {
+      console.log('Retail customer - Shopify will apply taxes at checkout')
+    }
+  }, [isB2B])
+
+  // Reactive order summary - automatically updates when cart changes
+  const orderSummary = useMemo(() => {
+    const subtotal = cartItems.reduce((sum, item) => {
+      const contextualPricing = b2bPricing[item.productId]
+      const price = contextualPricing?.price || item.price
+      return sum + (price * item.quantity)
+    }, 0)
+
+    return {
+    subtotal: subtotal,
+    deliveryFee: deliveryFee,
+      surchargeAmount: surchargeAmount,
+      totalFees: totalFees,
+      finalTotal: subtotal + totalFees,
+      isB2B: isB2B
+    }
+  }, [cartItems, b2bPricing, deliveryFee, surchargeAmount, totalFees, isB2B])
+
+  // Reactive draft order preparation - automatically updates when cart changes
+  const draftOrderData = useMemo(() => {
+    if (!selectedCustomer || !selectedLocation || cartItems.length === 0) {
+      return null
+    }
+
+    return {
+      lineItems: [
+        // Product items
+        ...cartItems.map(item => {
+          const contextualPricing = b2bPricing[item.productId]
+          const b2bPrice = contextualPricing?.price || item.price
+          return {
+            title: item.name,
+            originalUnitPrice: b2bPrice.toString(),
+            quantity: item.quantity,
+            customAttributes: [
+              { key: "SKU", value: item.sku || "N/A" },
+              { key: "Product ID", value: item.productId },
+              { key: "Variant ID", value: item.variantId },
+              { key: "B2B Price", value: contextualPricing ? "Yes" : "No" }
+            ]
+          }
+        }),
+        // Delivery fee
+        ...(deliveryFee > 0 ? [{
+          title: deliveryMethod === 'economy' ? 'Economy Delivery' : 
+                 deliveryMethod === 'standard' ? 'Standard Delivery' : 
+                 'Delivery Fee',
+          originalUnitPrice: deliveryFee.toString(),
+          quantity: 1,
+          customAttributes: [
+            { key: "Type", value: "Delivery Fee" },
+            { key: "Method", value: deliveryMethod },
+            { key: "Taxable", value: isB2B ? "No" : "Yes" }
+          ]
+        }] : [])
+      ],
+      totals: {
+        subtotal: orderSummary.subtotal,
+        deliveryFee: deliveryFee,
+        totalFees: totalFees,
+        finalTotal: orderSummary.finalTotal,
+        isB2B: isB2B
+      }
+    }
+  }, [cartItems, b2bPricing, deliveryFee, deliveryMethod, orderSummary, totalFees, isB2B, selectedCustomer, selectedLocation])
 
   const volumeDiscount = useMemo(() => 
-    calculateVolumeDiscount(orderTotal, selectedCustomer?.tier || 'standard')
-  , [orderTotal, selectedCustomer?.tier])
+    calculateVolumeDiscount(orderSummary.subtotal, selectedCustomer?.tier || 'standard')
+  , [orderSummary.subtotal, selectedCustomer?.tier])
 
   const quantityValidation = useMemo((): ValidationResult => 
     validateQuantityRules(cartItems, quantityRules)
@@ -1575,7 +2187,8 @@ const Modal = () => {
     fetchLocations()
     loadCartItems()
     fetchPaymentTermsTemplates()
-  }, [fetchLocations, loadCartItems, fetchPaymentTermsTemplates])
+    fetchStoreTaxSettings()
+  }, [fetchLocations, loadCartItems, fetchPaymentTermsTemplates, fetchStoreTaxSettings])
 
   // Auto-select first Net Terms template when templates are loaded
   useEffect(() => {
@@ -1598,9 +2211,35 @@ const Modal = () => {
     }
   }, [currentScreen, customers.length, customersLoading, fetchCustomers])
 
+  // Fetch customer tax status when customer is selected
+  useEffect(() => {
+    if (selectedCustomerId) {
+      fetchCustomerTaxStatus(selectedCustomerId)
+    }
+  }, [selectedCustomerId, fetchCustomerTaxStatus])
+
+  // Fetch location data when location is selected
+  useEffect(() => {
+    if (selectedLocation?.id) {
+      fetchLocationData(selectedLocation.id).then((location) => {
+        if (location) {
+          setLocationData(location)
+        }
+      })
+    }
+  }, [selectedLocation?.id, fetchLocationData])
+
   // Auto-load companies when location screen is shown
   useEffect(() => {
+    console.log('Location screen useEffect triggered:', {
+      currentScreen,
+      availableCompaniesLength: availableCompanies.length,
+      companiesLoading,
+      selectedCustomer: selectedCustomer?.name
+    })
+    
     if (currentScreen === 'location' && availableCompanies.length === 0 && !companiesLoading && selectedCustomer) {
+      console.log(`Triggering fetchCustomerCompanies for: ${selectedCustomer.name}`)
       fetchCustomerCompanies(selectedCustomer.name)
     }
   }, [currentScreen, availableCompanies.length, companiesLoading, selectedCustomer, fetchCustomerCompanies])
@@ -1661,29 +2300,33 @@ const Modal = () => {
   }, [cartItems, fetchContextualPricing])
 
   const handleCustomerSelection = useCallback(async (customer: Customer) => {
+    console.log(`Customer selected: ${customer.name}`)
     setSelectedCustomer(customer)
     setSelectedCustomerId(customer.id)
     
+    // Navigate immediately for better UX
+    setCurrentScreen('location')
+    
+    // Do heavy operations in background
     try {
-      // First fetch the customer's company
+      console.log('Fetching company locations for selected customer')
+      await fetchCustomerCompanies(customer.name)
+      
       const company = await fetchCustomerCompany(customer.name)
       
       if (company) {
-        // Fetch the company's location ID
         const locationCatalog = await fetchCompanyLocationId(company)
         
         if (locationCatalog) {
-          // Fetch B2B contextual pricing using the company location
           const { pricing, rules } = await fetchB2BPricingForCart(locationCatalog)
           setB2bPricing(pricing)
           setQuantityRules(rules)
           
-          // Reload cart items with new pricing
           const items = await loadCartItems(pricing)
           if (items && items.length > 0) {
             await fetchProductImages(items)
           }
-      } else {
+        } else {
           const productIds = cartItems.map(item => item.productId)
           const { pricing, rules } = await fetchCatalogData(productIds)
           setB2bPricing(pricing)
@@ -1694,7 +2337,6 @@ const Modal = () => {
           }
         }
       } else {
-        // Use regular pricing without B2B discounts
         const items = await loadCartItems({})
         if (items && items.length > 0) {
           await fetchProductImages(items)
@@ -1703,7 +2345,7 @@ const Modal = () => {
     } catch (error) {
       console.error('Error handling customer selection:', error)
     }
-  }, [cartItems, fetchCustomerCompany, fetchCatalogData, loadCartItems, fetchCompanyLocationId, fetchB2BPricingForCart])
+  }, [cartItems, fetchCustomerCompany, fetchCatalogData, loadCartItems, fetchCompanyLocationId, fetchB2BPricingForCart, fetchCustomerCompanies])
 
   const createB2BOrder = useCallback(async () => {
     try {
@@ -1727,20 +2369,45 @@ const Modal = () => {
         return
       }
 
+      // Use B2B detection for tax handling
+      console.log('Creating B2B order with customer type:', {
+        isB2B,
+        b2bDetectionLoading,
+        orderSummary
+      })
+
       // Prepare line items for the draft order
       const lineItems = cartItems.map(item => {
+        const isSurcharge = isSurchargeItem(item)
         const contextualPricing = b2bPricing[item.productId]
         const b2bPrice = contextualPricing?.price || item.price
         
-        return {
-          title: item.name,
-          originalUnitPrice: b2bPrice.toString(),
-          quantity: item.quantity,
-          customAttributes: [
-            { key: "SKU", value: item.sku || "N/A" },
-            { key: "Product ID", value: item.productId },
-            { key: "Variant ID", value: item.variantId }
-          ]
+        if (isSurcharge) {
+          // Handle surcharge items with explicit custom attributes
+          return {
+            title: item.name,
+            originalUnitPrice: b2bPrice.toString(),
+            quantity: 1, // Surcharges always have quantity 1
+            customAttributes: [
+              { key: "Type", value: "Surcharge" },
+              { key: "SurchargeType", value: getSurchargeType(item) || "Custom Surcharge" },
+              { key: "Taxable", value: isTaxableSurcharge(item) ? "Yes" : "No" },
+              { key: "Description", value: surchargeDescription || "Additional fee" }
+            ]
+          }
+        } else {
+          // Handle regular product items
+          return {
+            title: item.name,
+            originalUnitPrice: b2bPrice.toString(),
+            quantity: item.quantity,
+            customAttributes: [
+              { key: "SKU", value: item.sku || "N/A" },
+              { key: "Product ID", value: item.productId },
+              { key: "Variant ID", value: item.variantId },
+              { key: "B2B Price", value: contextualPricing ? "Yes" : "No" }
+            ]
+          }
         }
       })
 
@@ -1756,21 +2423,22 @@ const Modal = () => {
           quantity: 1,
           customAttributes: [
             { key: "Type", value: "Delivery Fee" },
-            { key: "Method", value: deliveryMethod }
+            { key: "Method", value: deliveryMethod },
+            { key: "Taxable", value: isB2B ? "No" : "Yes" }
           ]
         })
       }
 
-      // Add tax as a line item if applicable
-      if (taxData && taxAmount > 0) {
+      // Add custom surcharge as a line item if applicable
+      if (surchargeAmount > 0) {
         lineItems.push({
-          title: taxData.title,
-          originalUnitPrice: taxAmount.toString(),
+          title: surchargeDescription || 'Custom Surcharge',
+          originalUnitPrice: surchargeAmount.toString(),
           quantity: 1,
           customAttributes: [
-            { key: "Type", value: "Tax" },
-            { key: "Rate", value: `${Math.round(taxData.rate * 100)}%` },
-            { key: "Location", value: selectedLocation?.name || 'Unknown' }
+            { key: "Type", value: "Custom Surcharge" },
+            { key: "Description", value: surchargeDescription || "Additional fee" },
+            { key: "Taxable", value: isB2B ? "No" : "Yes" }
           ]
         })
       }
@@ -1816,18 +2484,22 @@ const Modal = () => {
         }
       `
 
+      // Note: Tax handling is done via line items in DraftOrderInput
+      // The taxLines field is not supported in DraftOrderInput type
+
       const input: any = {
-        note: `B2B Wholesale Order - ${orderNumber}${poNumber ? ` | PO: ${poNumber}` : ''}`,
+        note: `B2B Wholesale Order - ${orderNumber}${poNumber ? ` | PO: ${poNumber}` : ''}${isB2B ? ' | Tax handled externally' : ''}`,
         email: selectedCustomer.email || undefined,
-        tags: ['B2B', 'Wholesale', 'POS-Extension'],
+        tags: isB2B ? ['B2B', 'Wholesale', 'POS-Extension', 'TaxExempt'] : ['B2B', 'Wholesale', 'POS-Extension'],
         lineItems: lineItems,
-        // Note: Payment terms will be set after draft order creation
-        // We cannot use PaymentTermTemplate IDs directly in draft orders
+        taxExempt: isB2B, // ✅ Set taxExempt based on B2B detection
         customAttributes: [
           { key: "Order Number", value: orderNumber },
-          { key: "Company", value: selectedLocation.companyName || 'N/A' },
-          { key: "Location", value: selectedLocation.name },
-          { key: "Created By", value: "B2B POS Extension" }
+          { key: "Company", value: companyName || 'N/A' },
+          { key: "Location", value: selectedLocation?.name || selectedLocation?.address?.name || 'Unknown Location' },
+          { key: "Created By", value: "B2B POS Extension" },
+          { key: "Customer Type", value: isB2B ? "B2B (Tax Exempt)" : "B2B (Tax Included)" },
+          { key: "Tax Amount", value: isB2B ? "Handled externally" : (taxInfo ? `$${taxInfo.totalTax.toFixed(2)}` : '$0.00') }
         ],
         metafields: [
           {
@@ -1840,7 +2512,7 @@ const Modal = () => {
             namespace: "b2b_wholesale", 
             key: "company_location",
             type: "single_line_text_field",
-            value: selectedLocation.name
+            value: selectedLocation?.name || selectedLocation?.address?.name || 'Unknown Location'
           }
         ]
       }
@@ -1855,6 +2527,7 @@ const Modal = () => {
         })
       }
 
+      console.log('Creating draft order with input:', JSON.stringify(input, null, 2))
 
       const response = await fetch('shopify:admin/api/graphql.json', {
         method: 'POST',
@@ -1871,37 +2544,45 @@ const Modal = () => {
 
       const result = await response.json()
       
+      console.log('Draft order creation response:', JSON.stringify(result, null, 2))
+      
       if (result.errors) {
         console.error('GraphQL errors:', result.errors)
-        throw new Error('GraphQL errors occurred')
+        throw new Error(`GraphQL errors: ${result.errors.map((e: any) => e.message).join(', ')}`)
       }
 
       if (result.data?.draftOrderCreate?.userErrors?.length > 0) {
-        console.error('Draft order creation errors:', result.data.draftOrderCreate.userErrors)
-        throw new Error(result.data.draftOrderCreate.userErrors[0].message)
+        console.error('Draft order creation user errors:', result.data.draftOrderCreate.userErrors)
+        throw new Error(`Draft order creation failed: ${result.data.draftOrderCreate.userErrors.map((e: any) => e.message).join(', ')}`)
       }
 
       const draftOrder = result.data?.draftOrderCreate?.draftOrder
+      
       if (!draftOrder) {
-        throw new Error('Failed to create draft order')
+        console.error('No draft order returned from API. Full response:', result)
+        throw new Error('No draft order returned from API')
       }
 
-      // Create local order data for confirmation screen
+      console.log('Draft order created successfully:', draftOrder)
+
+      // Create local order data for confirmation screen using hook values
       const orderData: B2BOrder = {
         customerId: selectedCustomer.id,
         customer: selectedCustomer,
         poNumber: poNumber || undefined,
         tags: ['B2B', 'Wholesale'],
         items: cartItems,
-        subtotal: orderTotal,
+        subtotal: orderSummary.subtotal, // From order summary
         deliveryFee: deliveryFee,
+        surcharge: surchargeAmount, // Add surcharge to order data
+        surchargeDescription: surchargeDescription || undefined,
         volumeDiscount: 0, // No volume discount as requested
-        tax: taxAmount,
-        total: finalTotal, // This should match the delivery options total
+        tax: isB2B ? 0 : 0, // Tax handled externally for B2B, calculated at checkout for retail
+        total: orderSummary.finalTotal, // From order summary - accurate total
         isDraft: true,
         status: 'draft',
-        shopifyDraftOrderId: draftOrder.id,
-        shopifyOrderName: draftOrder.name,
+        shopifyDraftOrderId: draftOrder?.id || 'Unknown',
+        shopifyOrderName: draftOrder?.name || 'Unknown',
         invoiceUrl: draftOrder.invoiceUrl
       }
 
@@ -1909,9 +2590,9 @@ const Modal = () => {
         customerId: selectedCustomer.id,
         itemCount: cartItems.length,
         total: orderData.total,
-        location: selectedLocation.name,
-        shopifyDraftOrderId: draftOrder.id,
-        shopifyOrderName: draftOrder.name
+        location: selectedLocation?.name || selectedLocation?.address?.name || 'Unknown Location',
+        shopifyDraftOrderId: draftOrder?.id || 'Unknown',
+        shopifyOrderName: draftOrder?.name || 'Unknown'
       })
 
       setCreatedOrder(orderData)
@@ -1942,7 +2623,7 @@ const Modal = () => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       setValidationErrors([`❌ Failed to create order: ${errorMessage}. Please try again or contact support.`])
     }
-  }, [selectedCustomer, selectedLocation, poNumber, quantityValidation, cartItems, orderTotal, b2bPricing, orderNumber, deliveryFee, deliveryMethod, finalTotal])
+  }, [selectedCustomer, selectedLocation, poNumber, quantityValidation, cartItems, orderSummary, orderNumber, deliveryFee, deliveryMethod, surchargeAmount, surchargeDescription, isB2B])
 
   // Navigation handlers
   const goToNextScreen = useCallback(() => {
@@ -1989,83 +2670,121 @@ const Modal = () => {
   // Screen renderers
   const renderCustomerScreen = () => (
     <>
-      <Text variant="headingLarge">Select Your Customer</Text>
-      <Text>Choose the customer for this B2B wholesale order</Text>
+      <Text variant="headingLarge">Customer Selection</Text>
+      <Text>Select the business client for this wholesale transaction</Text>
+      <Text> </Text>
+      
+      <TextField
+        label="Client Search"
+        placeholder="Enter client name or email address..."
+        value={customerSearchTerm}
+        onChange={setCustomerSearchTerm}
+      />
       <Text> </Text>
       
       {customersLoading ? (
-        <>
-          <Text>Loading customers...</Text>
-          <Text>Please wait while we fetch your customer list</Text>
-        </>
-      ) : customers.length > 0 ? (
+        <Text>Retrieving client database...</Text>
+      ) : filteredCustomers.length > 0 ? (
         <ScrollView>
-          {customers.map(customer => (
-            <>
-            <Button
-                key={customer.id}
-                title={`${customer.name}${customer.email ? `\nEmail: ${customer.email}` : ''}${customer.hasPosOrders ? '\nPrevious POS Orders' : ''}`}
-              onPress={() => {
-                  handleCustomerSelection(customer)
-                }}
-                type={selectedCustomerId === customer.id ? 'primary' : 'basic'}
-              />
-              <Text> </Text>
-            </>
-          ))}
+          {filteredCustomers.map(customer => {
+            // Show full customer information - Button component handles centering automatically
+            const name = (customer.name || 'Unknown Client').trim()
+            const email = (customer.email || 'No email address').trim()
+            const posOrders = customer.hasPosOrders ? 'Previous POS Transactions' : ''
+            
+            // Create button text with hidden POS orders text to maintain consistent button size
+            const baseText = `${name} - ${email}`
+            const hiddenPosText = ' '.repeat(15) // Invisible spaces to maintain button size
+            const buttonText = posOrders 
+              ? `${baseText} - POS Transactions`
+              : `${baseText}${hiddenPosText}`
+            
+            return (
+              <>
+                <Button
+                  key={customer.id}
+                  title={buttonText}
+                  onPress={() => {
+                    setSelectedCustomer(customer)
+                    setSelectedCustomerId(customer.id)
+                  }}
+                  type={selectedCustomerId === customer.id ? 'primary' : 'basic'}
+                />
+                <Text> </Text>
+              </>
+            )
+          })}
         </ScrollView>
       ) : (
-        <>
-          <Text>No customers found</Text>
-          <Text>Please ensure customers are available in your store</Text>
-        </>
+        <Text>{customerSearchTerm ? 'No clients match your search criteria' : 'No clients available in the system'}</Text>
       )}
       
       {selectedCustomer && (
         <>
-          <Text>Selected: {selectedCustomer.name}</Text>
-          <Button title="Continue to Company Selection" onPress={goToNextScreen} />
+          <Text> </Text>
+          <Button
+            title="Proceed to Company Selection"
+            onPress={() => handleCustomerSelection(selectedCustomer)}
+          />
         </>
-        )}
+      )}
     </>
   )
 
   const renderLocationScreen = () => (
     <>
-      <Text variant="headingLarge">Select Company Location</Text>
-      <Text>Choose the company location for B2B pricing and fulfillment</Text>
+      <Text variant="headingLarge">Corporate Location Selection</Text>
+      <Text>Select the business location for this wholesale transaction</Text>
       <Text> </Text>
       
       {availableCompanies.length > 0 ? (
         <ScrollView>
-          {availableCompanies.map((company, index) => (
+          {availableCompanies.map((location, index) => {
+            return (
             <>
               <Button
-                key={company.id}
-                title={company.name}
-                type={selectedCompany === company.id ? 'primary' : 'basic'}
+                  key={location.id}
+                  title={location.name}
+                  type={selectedCompany === location.id ? 'primary' : 'basic'}
                 onPress={async () => {
-                  setSelectedCompany(company.id)
+                    setSelectedCompany(location.id)
                   try {
-                    const catalogInfo = await fetchCompanyLocationId(company.name)
-                    
-                    if (catalogInfo) {
+                      // Set the selected location directly since we have the location data
                       const newLocation = {
-                        id: catalogInfo.locationId,
-                        name: `${company.name} - ${catalogInfo.companyName}`,
-                        companyName: catalogInfo.companyName,
-                        companyId: catalogInfo.companyId
+                        id: location.id,
+                        name: location.name,
+                        companyName: location.name,
+                        companyId: location.id,
+                        shippingAddress: location.shippingAddress,
+                        billingAddress: location.billingAddress
                       }
                       
                       setSelectedLocation(newLocation)
                       
-                      // Fetch company addresses
-                      await fetchCompanyAddresses(catalogInfo.companyId, company.name)
+                      // Store the address data for this location
+                      setCompanyAddresses(prev => ({
+                        ...prev,
+                        [location.id]: {
+                          billingAddress: location.billingAddress,
+                          shippingAddress: location.shippingAddress,
+                          locationName: location.name
+                        }
+                      }))
                       
-                      // Fetch tax data for the selected location
-                      await fetchTaxData(catalogInfo.locationId)
+                      // Fetch location data for tax calculation
+                      const locationData = await fetchLocationData(location.id)
+                      if (locationData) {
+                        setLocationData(locationData)
+                      }
                       
-                      // Fetch B2B contextual pricing for the selected company
+                      // For B2B pricing, we'll need to create a catalog info object
+                      const catalogInfo = {
+                        locationId: location.id,
+                        companyName: location.name,
+                        companyId: location.id
+                      }
+                      
+                      // Fetch B2B contextual pricing for the selected location
                       const { pricing, rules } = await fetchB2BPricingForCart(catalogInfo)
                       setB2bPricing(pricing)
                       setQuantityRules(rules)
@@ -2074,101 +2793,102 @@ const Modal = () => {
                       const items = await loadCartItems(pricing)
                       if (items && items.length > 0) {
                         await fetchProductImages(items)
-                      }
-                    } else {
-                      console.error(`Failed to fetch ${company.name} location`)
                     }
                   } catch (error) {
-                    console.error(`Error selecting company ${company.name}:`, error)
+                      console.error(`Error selecting location ${location.name}:`, error)
                   }
                 }}
               />
               <Text> </Text>
             </>
-          ))}
+            )
+          })}
         </ScrollView>
       ) : (
         <Text>
           {companiesLoading 
-            ? "Loading companies..." 
+            ? "Retrieving corporate locations..." 
             : selectedCustomer 
-              ? `No companies found for customer: ${selectedCustomer.name}` 
-              : "Please select a customer first"
+              ? `No corporate locations associated with ${selectedCustomer.name}` 
+              : "Please select a client first"
           }
         </Text>
       )}
 
       {selectedCompany && (
         <>
-          <Text>Company Selected</Text>
-          <Text>B2B pricing and location data loaded</Text>
+          <Text> </Text>
+          <Text>✓ Location selected successfully</Text>
         </>
       )}
 
+      <Text> </Text>
       <Button
-        title="Continue to Cart Review"
+        title="Proceed to Order Review"
         onPress={goToNextScreen}
         isDisabled={!selectedCompany || !selectedCustomer}
       />
-      
       <Text> </Text>
       
-      <Button title="Back to Customer Selection" onPress={goToPreviousScreen} />
+      <Button title="Back" onPress={goToPreviousScreen} />
+      <Text> </Text>
     </>
   )
 
   const renderCartScreen = () => (
     <>
-      {/* Back Arrow Label */}
-      <Button
-        title="← Back to Company Selection"
-        type="basic"
-        onPress={() => setCurrentScreen('location')}
-      />
+        <Button
+          title="← Return to Location Selection"
+          type="basic"
+          onPress={() => setCurrentScreen('location')}
+        />
       <Text> </Text>
       
-      {/* Header */}
-      <Text variant="headingLarge">Cart Review & Verification</Text>
-      <Text>Review your order details and verify B2B pricing</Text>
+      <POSBlock>
+        <POSBlockRow>
+          <Text variant="headingLarge">Transaction Review</Text>
+          <Text variant="headingLarge">Review order details before proceeding to fulfillment</Text>
+        </POSBlockRow>
+      </POSBlock>
+      
       <Text> </Text>
       
-      {/* Company Information */}
-      <Text variant="headingLarge">Order Information</Text>
-      <Text>Customer: {selectedCustomer?.name || 'No customer selected'}</Text>
-      <Text>Company: {companyName || 'No company selected'}</Text>
+      <Text variant="headingLarge">Client Information</Text>
+      <Text>Client: {selectedCustomer?.name || 'No client selected'}</Text>
+      <Text>Corporate Entity: {companyName || 'No company selected'}</Text>
+      
       <Text> </Text>
       
-      {/* Billing Address Information */}
-      <Text variant="headingLarge">Billing Address</Text>
-      <Text>Company: {selectedLocation?.companyName || 'No company selected'}</Text>
+      
+      <Text variant="headingLarge">Billing Information</Text>
+      <Text>Corporate Entity: {companyName || 'No company selected'}</Text>
       <Text>Address: {(() => {
         if (!selectedLocation?.companyId || !companyAddresses[selectedLocation.companyId]?.billingAddress) {
-          return 'Address not available'
+          return 'Address information not available'
         }
         const billing = companyAddresses[selectedLocation.companyId].billingAddress!
         const addressParts = [
           billing.address1,
           billing.city,
-          billing.country,
-          billing.zip
+          billing.country
         ].filter(part => part && part.trim())
-        return addressParts.join(', ') || 'Address not available'
+        return addressParts.join(', ') || 'Address information not available'
       })()}</Text>
       <Text> </Text>
       
       <Button
-        title="Change Company Location"
+        title="Modify Corporate Location"
         onPress={() => setCurrentScreen('location')}
       />
       <Text> </Text>
 
-      {/* Cart Items */}
-      <Text variant="headingLarge">Cart Items ({cartItems.reduce((total, item) => total + item.quantity, 0)} items)</Text>
+      <Text variant="headingLarge">Order Items ({cartItems.reduce((total, item) => total + item.quantity, 0)} units)</Text>
       <Text> </Text>
       
       {cartItems.length > 0 ? (
         <>
           {cartItems.map((item, index) => {
+            const isSurcharge = isSurchargeItem(item)
             const rules = quantityRules[item.productId]
             const contextualPricing = b2bPricing[item.productId]
             const b2bPrice = contextualPricing?.price
@@ -2177,98 +2897,89 @@ const Modal = () => {
             
             return (
               <ScrollView key={index}>
-                <Text>{serialNumber}. {item.name}</Text>
+                <Text variant="headingSmall">{serialNumber}. {item.name}</Text>
                 <Text> </Text>
                 
-                {/* Product Image */}
-                {productImages[item.productId] && (
-                  <Image
-                    src={productImages[item.productId]}
-                  />
+                {!isSurcharge && productImages[item.productId] && (
+                  <Image src={productImages[item.productId]} />
                 )}
                 <Text> </Text>
                 
-                <Text>Qty: {item.quantity} | {b2bPrice ? `B2B: ${formatCurrency(b2bPrice)}` : `Price: ${formatCurrency(item.price)}`} | Total: {formatCurrency(itemSubtotal)}</Text>
-                {rules && (
-                  <Text>Min: {rules.minQuantity}{rules.maxQuantity ? ` | Max: ${rules.maxQuantity}` : ''}</Text>
-                )}
-                <Text> </Text>
-                
-                <Button
-                  title="View Details & Adjust"
-                  onPress={() => {
-                    setSelectedProduct(item)
-                    setProductDetailSource('cart')
-                    setCurrentScreen('product-detail')
-                  }}
-                />
-                <Text> </Text>
-                
-                {/* Separator between products (except for last item) */}
-                {index < cartItems.length - 1 && (
+                {isSurcharge ? (
                   <>
-                    <Text>────────────────────────────────────────────────────────</Text>
+                    <Text>Service Type: {getSurchargeType(item)}</Text>
+                    <Text>Amount: {formatCurrencyWithShop(item.price)}</Text>
+                    <Text>Taxable: {isTaxableSurcharge(item) ? 'Yes' : 'No'}</Text>
+                    <Text>Service charges cannot be modified</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text>Quantity: {item.quantity} | {b2bPrice ? `Wholesale Price: ${formatCurrencyWithShop(b2bPrice)}` : `Standard Price: ${formatCurrencyWithShop(item.price)}`} | Line Total: {formatCurrencyWithShop(itemSubtotal)}</Text>
+                    {rules && (
+                      <Text>Minimum: {rules.minQuantity}{rules.maxQuantity ? ` | Maximum: ${rules.maxQuantity}` : ''}</Text>
+                    )}
                     <Text> </Text>
+                    
+                    <Button
+                      title="Modify Quantity"
+                      onPress={() => {
+                        setSelectedProduct(item)
+                        setProductDetailSource('cart')
+                        setCurrentScreen('product-detail')
+                      }}
+                    />
                   </>
                 )}
+                <Text> </Text>
+                
+                <Text> </Text>
               </ScrollView>
             )
           })}
           
-          {/* Quantity Validation Warning */}
-          {!quantityValidation.isValid && (
+          {quantityValidation.isValid ? null : (
             <>
               <Text> </Text>
-            <Text>{quantityValidation.errors.length} items below minimum quantities</Text>
-              <Text>Please adjust quantities to meet B2B requirements</Text>
+              <Text variant="headingLarge">{quantityValidation.errors.length} items below minimum quantity requirements</Text>
+              <Text> </Text>
+              <Button
+                title="Resolve Quantity Issues"
+              onPress={() => setCurrentScreen('quantity')}
+                
+              />
               <Text> </Text>
             </>
           )}
-          
-          {!quantityValidation.isValid && (
-            <Button
-              title="Fix Quantity Issues"
-              onPress={() => setCurrentScreen('quantity')}
-            />
-          )}
         </>
       ) : (
-        <>
-        <Text>No items in cart</Text>
-          <Text>Add products to create your B2B order</Text>
-          <Text> </Text>
-        </>
+        <Text>No items in transaction</Text>
       )}
 
       <Text> </Text>
-
       <Button
-        title="Proceed to Delivery Options"
+        title="Proceed to Fulfillment Details"
         onPress={goToNextScreen}
         isDisabled={cartItems.length === 0 || !quantityValidation.isValid}
       />
       <Text> </Text>
       
-      <Button title="Back to Company Selection" onPress={goToPreviousScreen} />
+      <Button title="Back" onPress={goToPreviousScreen} />
+      <Text> </Text>
     </>
   )
 
   const renderQuantityScreen = () => (
     <>
-      {/* Back Arrow Label */}
       <Button
-        title="← Back to Cart Review"
+        title="← Back"
         type="basic"
         onPress={() => setCurrentScreen('cart')}
       />
       <Text> </Text>
       
-      {/* Header */}
       <Text variant="headingLarge">Quantity Requirements</Text>
-      <Text>Adjust quantities to meet B2B wholesale requirements</Text>
       <Text> </Text>
 
-      {/* Quantity Issues List - Only show items with validation errors */}
       {(() => {
         const itemsWithIssues = cartItems.filter(item => {
         const rules = quantityRules[item.productId]
@@ -2292,18 +3003,17 @@ const Modal = () => {
         if (itemsWithIssues.length === 0) {
         return (
             <>
+            <Text> </Text>
             <Text>All items meet quantity requirements!</Text>
-              <Text>Your order is ready to proceed</Text>
-              <Text> </Text>
+            <Text> </Text>
             </>
           )
         }
         
         return (
           <>
-            {/* Items Below Minimum Quantity Heading */}
+            <Text> </Text>
             <Text>{itemsWithIssues.length === 1 ? '1 Item Below Minimum Quantity' : `${itemsWithIssues.length} Items Below Minimum Quantity`}</Text>
-            <Text>Please adjust quantities to meet B2B requirements</Text>
             <Text> </Text>
             
             {itemsWithIssues.map((item, index) => {
@@ -2318,29 +3028,21 @@ const Modal = () => {
               <Text>{serialNumber}. {item.name}</Text>
               <Text> </Text>
               
-              {/* Product Image */}
               {productImages[item.productId] && (
-                <>
-                <Image
-                  src={productImages[item.productId]}
-                />
-                  <Text> </Text>
-                </>
+                <Image src={productImages[item.productId]} />
               )}
+              <Text> </Text>
               
               <Text>
-                B2B Price: {b2bPrice ? formatCurrency(b2bPrice) : 'N/A'} | 
+                B2B Price: {b2bPrice ? formatCurrencyWithShop(b2bPrice) : 'N/A'} | 
                 Min: {rules?.minQuantity || 1} | 
                 Max: {rules?.maxQuantity || 'No limit'}
           </Text>
               
-              <Text> </Text>
-              
               <Text>
                 Current Qty: {item.quantity} | 
-                Total Price: {formatCurrency(itemSubtotal)}
+                Total Price: {formatCurrencyWithShop(itemSubtotal)}
               </Text>
-              
               <Text> </Text>
               
               <Button
@@ -2351,8 +3053,11 @@ const Modal = () => {
                   setCurrentScreen('product-detail')
                 }}
               />
-              
               <Text> </Text>
+              
+              {index < itemsWithIssues.length - 1 && (
+                <Text> </Text>
+              )}
             </ScrollView>
           )
         })}
@@ -2361,16 +3066,15 @@ const Modal = () => {
       })()}
 
       <Text> </Text>
-
       <Button
-        title="Continue to Delivery Options"
+        title="Continue"
         onPress={goToNextScreen}
         isDisabled={!quantityValidation.isValid}
       />
-      
       <Text> </Text>
       
-      <Button title="Back to Cart Review" onPress={goToPreviousScreen} />
+      <Button title="Back" onPress={goToPreviousScreen} />
+      <Text> </Text>
     </>
   )
 
@@ -2408,7 +3112,6 @@ const Modal = () => {
     
     return (
       <>
-        {/* Back Arrow Label */}
         <Button
           title="← Back"
           type="basic"
@@ -2422,69 +3125,44 @@ const Modal = () => {
         />
         <Text> </Text>
         
-        {/* Product Information */}
         <Text variant="headingLarge">{selectedProduct.name}</Text>
-        
         <Text> </Text>
         
-        {/* Product Image */}
         {productImages[selectedProduct.productId] && (
-          <Image
-            src={productImages[selectedProduct.productId]}
-          />
+          <Image src={productImages[selectedProduct.productId]} />
         )}
-        
         <Text> </Text>
         
-        {/* Product Description */}
         {productDescription && (
-          <>
-            <Text>{productDescription}</Text>
-        <Text> </Text>
-          </>
+          <Text>{productDescription}</Text>
         )}
-        
-        {/* B2B Pricing Information */}
-        <Text variant="headingLarge">B2B Pricing Information</Text>
         <Text> </Text>
         
-        <Text>B2B Price: {b2bPrice ? formatCurrency(b2bPrice) : 'N/A'}</Text>
+        <Text variant="headingLarge">B2B Pricing</Text>
+        <Text>B2B Price: {b2bPrice ? formatCurrencyWithShop(b2bPrice) : 'N/A'}</Text>
         <Text>Min Quantity: {rules?.minQuantity || 1}</Text>
         <Text>Max Quantity: {rules?.maxQuantity || 'No limit'}</Text>
         <Text>Increment: {rules?.increment || 1}</Text>
-        
-        <Text> </Text>
         <Text> </Text>
         
-        {/* Price Breaks Section */}
         {rules?.priceBreaks && rules.priceBreaks.length > 0 && (
           <>
-            <Text variant="headingLarge">Available Price Breaks</Text>
-            <Text> </Text>
+            <Text variant="headingLarge">Price Breaks</Text>
             {rules.priceBreaks
               .sort((a: any, b: any) => a.minimumQuantity - b.minimumQuantity)
               .map((priceBreak: any, index: number) => (
                 <Text key={index}>
-                  {priceBreak.minimumQuantity}+ units: {formatCurrency(parseFloat(priceBreak.price.amount))}
+                  {priceBreak.minimumQuantity}+ units: {formatCurrencyWithShop(parseFloat(priceBreak.price.amount))}
                 </Text>
               ))}
-            <Text> </Text>
             <Text> </Text>
           </>
         )}
         
-        
-        {/* Quantity Adjustment Controls */}
-        <Text> </Text>
-        
-        {/* Quantity Controls - Horizontal Layout */}
-        <Text> </Text>
-        
-        {/* Quantity Display and Controls in Horizontal Layout */}
+        <Text variant="headingLarge">Quantity Controls</Text>
         <Text>Current Quantity: {selectedProduct.quantity}</Text>
         <Text> </Text>
         
-        {/* Decrease Button */}
         <Button
           title="−"
           onPress={() => {
@@ -2494,22 +3172,17 @@ const Modal = () => {
             setSelectedProduct(updatedProduct)
           }}
         />
-        
         <Text> </Text>
         
-        {/* Quantity Number Button */}
         <Button
           title={`${selectedProduct.quantity}`}
           type="primary"
           onPress={() => {
-            // Quantity button - could be used for direct quantity input in the future
             console.log('Quantity button pressed:', selectedProduct.quantity)
           }}
         />
-        
         <Text> </Text>
         
-        {/* Increase Button */}
         <Button
           title="+"
           onPress={() => {
@@ -2524,14 +3197,11 @@ const Modal = () => {
           }}
           isDisabled={rules?.maxQuantity ? selectedProduct.quantity >= rules.maxQuantity : false}
         />
-        
         <Text> </Text>
         
-        {/* Subtotal Display */}
-        <Text variant="headingLarge">Subtotal: {formatCurrency(displayPrice * selectedProduct.quantity)}</Text>
+        <Text variant="headingLarge">Subtotal: {formatCurrencyWithShop(displayPrice * selectedProduct.quantity)}</Text>
         <Text> </Text>
         
-        {/* Primary Action Buttons */}
         <Button
           title="Update Cart"
           onPress={() => {
@@ -2542,11 +3212,8 @@ const Modal = () => {
             }
           }}
         />
-        
-        <Text> </Text>
         <Text> </Text>
         
-        {/* Secondary Action Buttons */}
         <Button
           title="Remove from Cart"
           onPress={() => {
@@ -2578,6 +3245,7 @@ const Modal = () => {
             }
           }}
         />
+        <Text> </Text>
         
       </>
     )
@@ -2585,144 +3253,211 @@ const Modal = () => {
 
   const renderDeliveryScreen = () => (
     <>
-      {/* Back Arrow Label */}
-      <Button
-        title="← Back to Cart Review"
-        type="basic"
-        onPress={() => setCurrentScreen(quantityValidation.isValid ? 'cart' : 'quantity')}
-      />
+        <Button
+          title="← Return to Transaction Review"
+          type="basic"
+          onPress={() => setCurrentScreen(quantityValidation.isValid ? 'cart' : 'quantity')}
+        />
       <Text> </Text>
       
-      <Text variant="headingLarge">Delivery & Order Details</Text>
-      <Text>Complete your B2B wholesale order with delivery options</Text>
+      <Text variant="headingLarge">Fulfillment & Transaction Details</Text>
+      <Text>Configure delivery method and transaction documentation</Text>
       <Text> </Text>
       
       <TextField
-        label="Purchase Order Number *"
+        label="Purchase Order Reference *"
         value={poNumber}
         onChange={setPoNumber}
-        placeholder="Enter your PO number..."
-        error={!poNumber ? "PO Number is required for B2B orders" : undefined}
+        placeholder="Enter PO reference number..."
+        error={!poNumber ? "Purchase Order reference is required" : undefined}
       />
+      <Text> </Text>
 
-      <Text>Select Delivery Method:</Text>
+      <Text variant="headingLarge">Fulfillment Method:</Text>
+      <Text> </Text>
       
       <ScrollView>
       <Button 
-          title={`Store Pickup - FREE${deliveryMethod === 'pickup' ? ' ✓' : ''}`}
+          title={`Corporate Pickup - Complimentary${deliveryMethod === 'pickup' ? ' ✓' : ''}`}
+          type={deliveryMethod === 'pickup' ? 'primary' : 'basic'}
           onPress={() => setDeliveryMethod('pickup')} 
       />
+      <Text> </Text>
         
       <Button 
-          title={`Economy Delivery - $${economyFee}${deliveryMethod === 'economy' ? ' ✓' : ''}`}
-          onPress={() => setDeliveryMethod('economy')} 
+          title="Custom Fulfillment Method"
+          type={deliveryMethod !== 'pickup' ? 'primary' : 'basic'}
+          onPress={() => setDeliveryMethod('custom')} 
       />
-        
-      <Button 
-          title={`Standard Delivery - $${standardFee}${deliveryMethod === 'standard' ? ' ✓' : ''}`}
-          onPress={() => setDeliveryMethod('standard')} 
-      />
+      <Text> </Text>
       </ScrollView>
 
-      {deliveryMethod === 'economy' && (
-      <TextField
-          label="Economy Delivery Fee ($)"
-          value={economyFee}
-          onChange={setEconomyFee}
-          placeholder="Enter economy delivery fee..."
-        />
+      {deliveryMethod !== 'pickup' && (
+      <>
+        <TextField
+            label="Fulfillment Method Name"
+            value={customDeliveryName}
+            onChange={setCustomDeliveryName}
+            placeholder="e.g., Express Delivery, White Glove Service..."
+          />
+        <Text> </Text>
+        
+        <TextField
+            label="Fulfillment Fee Amount"
+            value={customDeliveryFee}
+            onChange={setCustomDeliveryFee}
+            placeholder="Enter fulfillment fee amount..."
+          />
+        <Text> </Text>
+      </>
       )}
 
-      {deliveryMethod === 'standard' && (
+      <Text variant="headingLarge">Additional Service Charges</Text>
+      <Text> </Text>
+      
       <TextField
-          label="Standard Delivery Fee ($)"
-          value={standardFee}
-          onChange={setStandardFee}
-          placeholder="Enter standard delivery fee..."
-        />
+        label="Custom Service Charge"
+        value={customSurcharge}
+        onChange={setCustomSurcharge}
+        placeholder="Enter additional service fee amount..."
+      />
+      <Text> </Text>
+      
+      <TextField
+        label="Service Description (Optional)"
+        value={surchargeDescription}
+        onChange={setSurchargeDescription}
+        placeholder="e.g., Rush processing fee, Special handling service..."
+      />
+      <Text> </Text>
+
+      <Text variant="headingLarge">Transaction Summary</Text>
+      <Text>Total Units: {cartItems.reduce((total, item) => total + item.quantity, 0)}</Text>
+      <Text>Subtotal: {formatCurrencyWithShop(orderSummary.subtotal)}</Text>
+      
+      {deliveryMethod === 'pickup' ? (
+        <Text>Fulfillment Method: Corporate Pickup - Complimentary</Text>
+      ) : (
+        <Text>Fulfillment Method: {customDeliveryName || 'Custom Fulfillment'}</Text>
       )}
+      
+      {deliveryFee > 0 && (
+        <Text>{customDeliveryName || 'Custom Fulfillment'}: {formatCurrencyWithShop(deliveryFee)}</Text>
+      )}
+      
+      {surchargeAmount > 0 && (
+        <>
+          <Text>Service Charge: {formatCurrencyWithShop(surchargeAmount)}</Text>
+          {surchargeDescription && (
+            <Text>({surchargeDescription})</Text>
+          )}
+        </>
+      )}
+      
+      {totalFees > 0 && (
+        <Text>Total Service Fees: {formatCurrencyWithShop(totalFees)}</Text>
+      )}
+      
+      <Text>Tax: $0.00</Text>
+      
+      <Text variant="headingLarge">Transaction Total: {formatCurrencyWithShop(orderSummary.finalTotal)}</Text>
+      <Text>Payment Terms: {selectedPaymentTerms ? formatNetTerms(selectedPaymentTerms) : 'Standard Terms'}</Text>
+      <Text> </Text>
 
-      <Text variant="headingLarge">Order Summary</Text>
-      <Text>Total Items: {cartItems.reduce((total, item) => total + item.quantity, 0)}</Text>
-      <Text>Subtotal: {formatCurrency(orderTotal)}</Text>
-      <Text>{taxData?.title || 'Tax'} ({taxData ? Math.round(taxData.rate * 100) : 0}%): {formatCurrency(taxAmount)}</Text>
-      <Text>Shipping: {formatCurrency(deliveryFee)}</Text>
-      <Text variant="headingLarge">Total: {formatCurrency(finalTotal)}</Text>
-      <Text>Net Terms: {selectedPaymentTerms ? formatNetTerms(selectedPaymentTerms) : 'N/A'}</Text>
-
-      {/* Validation Errors */}
       {validationErrors.length > 0 && (
         <>
           <Text> </Text>
           {validationErrors.map((error, index) => (
-            <Text key={index} variant="headingLarge">{error}</Text>
+            <Text variant="headingLarge">{error}</Text>
           ))}
           <Text> </Text>
         </>
       )}
 
+      <Text> </Text>
       <Button
-        title="Create B2B Order"
+        title="Process Transaction"
         onPress={createB2BOrder}
         isDisabled={cartItems.length === 0 || !quantityValidation.isValid || !poNumber || poNumber.trim() === ''}
       />
+      <Text> </Text>
       
-      <Button title="Back to Cart Review" onPress={goToPreviousScreen} />
+      <Button title="Back" onPress={goToPreviousScreen} />
+      <Text> </Text>
     </>
   )
 
   const renderConfirmationScreen = () => (
     <>
-      {/* Back Arrow Label */}
-      <Button
-        title="← Back to Delivery Options"
-        type="basic"
-        onPress={() => setCurrentScreen('delivery')}
-      />
+        <Button
+          title="← Return to Fulfillment Details"
+          type="basic"
+          onPress={() => setCurrentScreen('delivery')}
+        />
       <Text> </Text>
       
-      <Text variant="headingLarge">Order Created Successfully!</Text>
-      <Text>Your B2B wholesale order has been processed</Text>
+      <Text variant="headingLarge">Transaction Processed Successfully</Text>
+      <Text>Your wholesale transaction has been created and is ready for fulfillment</Text>
       <Text> </Text>
       
       {createdOrder && (
         <>
-          <Text variant="headingLarge">Order Details</Text>
-          <Text>Order Name: {createdOrder.shopifyOrderName || orderNumber}</Text>
-          <Text>Order #: {orderNumber}</Text>
-          <Text>Customer: {createdOrder.customer?.name}</Text>
-          <Text>Company: {companyName || 'N/A'}</Text>
-          <Text>PO Number: {createdOrder.poNumber || poNumber}</Text>
-          
+          <Text variant="headingLarge">Transaction Details</Text>
+          <Text>Transaction ID: {createdOrder.shopifyOrderName || orderNumber}</Text>
+          <Text>Reference Number: {orderNumber}</Text>
+          <Text>Client: {createdOrder.customer?.name}</Text>
+          <Text>Corporate Entity: {companyName || 'N/A'}</Text>
+          <Text>Purchase Order Reference: {createdOrder.poNumber || poNumber}</Text>
           <Text> </Text>
-          <Text variant="headingLarge">Order Summary</Text>
-          <Text>Total Items: {cartItems.reduce((total, item) => total + item.quantity, 0)}</Text>
-          <Text>Subtotal: {formatCurrency(createdOrder.subtotal)}</Text>
-          <Text>{taxData?.title || 'Tax'} ({taxData ? Math.round(taxData.rate * 100) : 0}%): {formatCurrency(createdOrder.tax ?? 0)}</Text>
-          <Text>Shipping: {formatCurrency(createdOrder.deliveryFee ?? 0)}</Text>
-          <Text variant="headingLarge">Total: {formatCurrency(createdOrder.total)}</Text>
-          <Text>Net Terms: {selectedPaymentTerms ? formatNetTerms(selectedPaymentTerms) : 'N/A'}</Text>
+          
+          <Text variant="headingLarge">Financial Summary</Text>
+          <Text>Total Units: {cartItems.reduce((total, item) => total + item.quantity, 0)}</Text>
+          <Text>Subtotal: {formatCurrencyWithShop(orderSummary.subtotal)}</Text>
+          
+          {deliveryMethod === 'pickup' ? (
+            <Text>Fulfillment Method: Corporate Pickup - Complimentary</Text>
+          ) : (
+            <Text>Fulfillment Method: {customDeliveryName || 'Custom Fulfillment'}</Text>
+          )}
+          
+          <Text>Tax: $0.00</Text>
+          
+          <Text>Fulfillment Fee: {formatCurrencyWithShop(createdOrder.deliveryFee ?? 0)}</Text>
+          
+          {createdOrder.surcharge && createdOrder.surcharge > 0 && (
+            <>
+              <Text>Service Charge: {formatCurrencyWithShop(createdOrder.surcharge)}</Text>
+              {createdOrder.surchargeDescription && (
+                <Text>({createdOrder.surchargeDescription})</Text>
+              )}
+            </>
+          )}
+          
+          <Text variant="headingLarge">Transaction Total: {formatCurrencyWithShop(createdOrder.total)}</Text>
+          <Text>Payment Terms: {selectedPaymentTerms ? formatNetTerms(selectedPaymentTerms) : 'Standard Terms'}</Text>
           {selectedPaymentTerms && (
             <Text>Payment Type: {selectedPaymentTerms.paymentTermsType}</Text>
           )}
+          <Text> </Text>
           
           {createdOrder.shopifyOrderName && (
             <>
+              <Text variant="headingLarge">Next Steps</Text>
+              <Text>• Transaction appears in your Orders management system</Text>
+              <Text>• Invoice will be automatically generated and sent to client</Text>
+              <Text>• Fulfillment team will be notified for processing</Text>
               <Text> </Text>
-              <Text>Order appears in your Orders section</Text>
-              <Text>Invoice will be sent to customer</Text>
             </>
           )}
         </>
       )}
 
       <Text> </Text>
-      <Text> </Text>
-
       <Button
-        title="Create Another Order"
+        title="Create New Transaction"
         onPress={resetOrder}
       />
+      <Text> </Text>
     </>
   )
 
@@ -2730,7 +3465,7 @@ const Modal = () => {
 
   return (
     <Navigator>
-      <Screen name="B2BWholesale" title="B2B Wholesale Orders">
+      <Screen name="B2BWholesale" title="Transaction Management">
         <ScrollView>
          
           

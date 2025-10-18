@@ -123,6 +123,8 @@ export interface B2BOrder {
   items: OrderItem[]
   subtotal: number
   deliveryFee?: number
+  surcharge?: number
+  surchargeDescription?: string
   volumeDiscount?: number
   tax: number
   total: number
