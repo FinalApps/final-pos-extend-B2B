@@ -257,9 +257,9 @@ const useCompanyData = () => {
   const [companyName, setCompanyName] = useState<string | null>(null)
   const [priceListInfo, setPriceListInfo] = useState<{id: string, name: string, currency: string} | null>(null)
   const [locationCatalogInfo, setLocationCatalogInfo] = useState<{id: string, title: string, status: string, locationId?: string, companyName?: string, companyId?: string} | null>(null)
-  const [availableCompanies, setAvailableCompanies] = useState<{id: string, name: string, shippingAddress?: {address1?: string, city?: string, country?: string}, billingAddress?: {address1?: string, city?: string, country?: string}}[]>([])
+  const [availableCompanies, setAvailableCompanies] = useState<{id: string, name: string, shippingAddress?: {address1?: string, city?: string, country?: string}, billingAddress?: {address1?: string, address2?: string, city?: string, province?: string, country?: string, zip?: string}}[]>([])
   const [companiesLoading, setCompaniesLoading] = useState(false)
-  const [companyAddresses, setCompanyAddresses] = useState<{[companyId: string]: {shippingAddress?: {address1?: string, city?: string, country?: string}, billingAddress?: {address1?: string, city?: string, country?: string}, locationName?: string}}>({})
+  const [companyAddresses, setCompanyAddresses] = useState<{[companyId: string]: {shippingAddress?: {address1?: string, city?: string, country?: string}, billingAddress?: {address1?: string, address2?: string, city?: string, province?: string, country?: string, zip?: string}, locationName?: string}}>({})
 
   const fetchCustomerCompany = useCallback(async (customerName: string): Promise<string | null> => {
     try {
@@ -483,8 +483,11 @@ const useCompanyData = () => {
                     }
                     billingAddress {
                       address1
+                      address2
                       city
+                      province
                       country
+                      zip
                     }
                   }
                 }
@@ -2870,7 +2873,10 @@ const Modal = () => {
     
     const parts = [
       billingAddress.address1,
+      billingAddress.address2,
       billingAddress.city,
+      billingAddress.province,
+      billingAddress.zip,
       billingAddress.country
     ].filter(Boolean)
     
@@ -2879,7 +2885,7 @@ const Modal = () => {
 
   const renderLocationScreen = () => (
     <>
-      <Text variant="headingLarge">Corporate Location Selection</Text>
+      <Text variant="headingLarge">Company Location Selection</Text>
       <Text>Select the business location for this wholesale transaction</Text>
       <Text> </Text>
       
@@ -2956,9 +2962,9 @@ const Modal = () => {
       ) : (
         <Text>
           {companiesLoading 
-            ? "Retrieving corporate locations..." 
+            ? "Retrieving company locations..." 
             : selectedCustomer 
-              ? `No corporate locations associated with ${selectedCustomer.name}` 
+              ? `No company locations associated with ${selectedCustomer.name}` 
               : "Please select a client first"
           }
         </Text>
@@ -3004,13 +3010,13 @@ const Modal = () => {
       
       <Text variant="headingLarge">Client Information</Text>
       <Text>Client: {selectedCustomer?.name || 'No client selected'}</Text>
-      <Text>Corporate Entity: {companyName || 'No company selected'}</Text>
+      <Text>Company Entity: {companyName || 'No company selected'}</Text>
       
       <Text> </Text>
       
       
       <Text variant="headingLarge">Billing Information</Text>
-      <Text>Corporate Entity: {companyName || 'No company selected'}</Text>
+      <Text>Company Entity: {companyName || 'No company selected'}</Text>
       <Text>Address: {(() => {
         if (!selectedLocation?.companyId || !companyAddresses[selectedLocation.companyId]?.billingAddress) {
           return 'Address information not available'
@@ -3026,7 +3032,7 @@ const Modal = () => {
       <Text> </Text>
       
       <Button
-        title="Modify Corporate Location"
+        title="Modify Company Location"
         onPress={() => setCurrentScreen('location')}
       />
       <Text> </Text>
@@ -3424,7 +3430,7 @@ const Modal = () => {
       
       <ScrollView>
       <Button 
-          title={`Corporate Pickup - Complimentary${deliveryMethod === 'pickup' ? ' ✓' : ''}`}
+          title={`Company Pickup - Complimentary${deliveryMethod === 'pickup' ? ' ✓' : ''}`}
           type={deliveryMethod === 'pickup' ? 'primary' : 'basic'}
           onPress={() => setDeliveryMethod('pickup')} 
       />
@@ -3482,7 +3488,7 @@ const Modal = () => {
       <Text>Subtotal: {formatCurrencyWithShop(orderSummary.subtotal)}</Text>
       
       {deliveryMethod === 'pickup' ? (
-        <Text>Fulfillment Method: Corporate Pickup - Complimentary</Text>
+        <Text>Fulfillment Method: Company Pickup - Complimentary</Text>
       ) : (
         <Text>Fulfillment Method: {customDeliveryName || 'Custom Fulfillment'}</Text>
       )}
@@ -3552,7 +3558,7 @@ const Modal = () => {
           <Text>Transaction ID: {createdOrder.shopifyOrderName || orderNumber}</Text>
           <Text>Reference Number: {orderNumber}</Text>
           <Text>Client: {createdOrder.customer?.name}</Text>
-          <Text>Corporate Entity: {companyName || 'N/A'}</Text>
+          <Text>Company Entity: {companyName || 'N/A'}</Text>
           <Text>Purchase Order Reference: {createdOrder.poNumber || poNumber}</Text>
           <Text> </Text>
           
@@ -3561,7 +3567,7 @@ const Modal = () => {
           <Text>Subtotal: {formatCurrencyWithShop(orderSummary.subtotal)}</Text>
           
           {deliveryMethod === 'pickup' ? (
-            <Text>Fulfillment Method: Corporate Pickup - Complimentary</Text>
+            <Text>Fulfillment Method: Company Pickup - Complimentary</Text>
           ) : (
             <Text>Fulfillment Method: {customDeliveryName || 'Custom Fulfillment'}</Text>
           )}

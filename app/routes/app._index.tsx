@@ -51,7 +51,7 @@ export default function Index() {
                   </Text>
                   <Text variant="bodyLg" as="p" tone="subdued">
                     Streamline your wholesale operations with B2B customer management, 
-                    corporate location selection, and draft order creation directly in Shopify POS.
+                    company location selection, and draft order creation directly in Shopify POS.
                   </Text>
                   <InlineStack gap="200">
                     <Badge tone="success">POS Extension</Badge>
@@ -80,16 +80,16 @@ export default function Index() {
                           🏢 B2B Customer Management
                         </Text>
                         <Text variant="bodyMd" as="p">
-                          Search and select corporate customers with automatic B2B detection 
+                          Search and select company customers with automatic B2B detection 
                           based on customer tags and company profiles.
                         </Text>
                       </BlockStack>
                       <BlockStack gap="200">
                         <Text as="h3" variant="headingMd">
-                          📍 Corporate Location Selection
+                          📍 Company Location Selection
                         </Text>
                         <Text variant="bodyMd" as="p">
-                          Choose corporate locations with full billing addresses 
+                          Choose company locations with full billing addresses 
                           for accurate order processing and customer management.
                         </Text>
                       </BlockStack>
@@ -113,19 +113,19 @@ export default function Index() {
                         <Text variant="bodyMd" as="p">
                           Create draft orders for B2B customers with automatic 
                           completion and fulfillment capabilities.
-                        </Text>
-                      </BlockStack>
-                      <BlockStack gap="200">
-                        <Text as="h3" variant="headingMd">
+                  </Text>
+                </BlockStack>
+                <BlockStack gap="200">
+                  <Text as="h3" variant="headingMd">
                           🔢 Quantity Rules
-                        </Text>
+                  </Text>
                         <Text variant="bodyMd" as="p">
                           Set minimum and maximum quantities with increment 
                           rules for wholesale order validation.
-                        </Text>
-                      </BlockStack>
+                  </Text>
+                </BlockStack>
                       <BlockStack gap="200">
-                        <Text as="h3" variant="headingMd">
+                    <Text as="h3" variant="headingMd">
                           ✅ Order Fulfillment
                         </Text>
                         <Text variant="bodyMd" as="p">
@@ -170,7 +170,7 @@ export default function Index() {
                           2. Location & Cart Setup
                         </Text>
                         <Text variant="bodyMd" as="p" alignment="center">
-                          Choose corporate locations with billing addresses, 
+                          Choose company locations with billing addresses, 
                           then add products to cart with quantity validation.
                         </Text>
                       </Box>
@@ -185,8 +185,8 @@ export default function Index() {
                         <Text variant="bodyMd" as="p" alignment="center">
                           Create draft orders, complete them, and generate 
                           fulfillments for streamlined B2B operations.
-                        </Text>
-                      </Box>
+                    </Text>
+                    </Box>
                     </BlockStack>
                   </Layout.Section>
                 </Layout>
@@ -195,40 +195,79 @@ export default function Index() {
           </Layout.Section>
         </Layout>
 
-        {/* Configuration Options */}
+        {/* Customer Management */}
         <Layout>
           <Layout.Section>
             <Card>
               <BlockStack gap="500">
                 <Text as="h2" variant="headingLg">
-                  Configuration Options
+                  Customer Management
                 </Text>
                 <Layout>
                   <Layout.Section variant="oneHalf">
                     <BlockStack gap="400">
                       <Text as="h3" variant="headingMd">
-                        Customer Management
+                        B2B Customer Detection
                       </Text>
                       <List>
-                        <List.Item>B2B customer detection</List.Item>
-                        <List.Item>Customer search functionality</List.Item>
+                        <List.Item>Automatic B2B customer identification</List.Item>
+                        <List.Item>Customer tag-based detection</List.Item>
                         <List.Item>Company profile integration</List.Item>
-                        <List.Item>Customer tag-based identification</List.Item>
                         <List.Item>POS order history tracking</List.Item>
                       </List>
                     </BlockStack>
                   </Layout.Section>
                   <Layout.Section variant="oneHalf">
                     <BlockStack gap="400">
+                    <Text as="h3" variant="headingMd">
+                        Customer Search & Selection
+                    </Text>
+                      <List>
+                        <List.Item>Customer search functionality</List.Item>
+                        <List.Item>Name and email-based search</List.Item>
+                        <List.Item>Company customer filtering</List.Item>
+                        <List.Item>Customer selection interface</List.Item>
+                      </List>
+                    </BlockStack>
+                  </Layout.Section>
+                </Layout>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        </Layout>
+
+        {/* Order Management */}
+        <Layout>
+          <Layout.Section>
+            <Card>
+            <BlockStack gap="500">
+                <Text as="h2" variant="headingLg">
+                  Order Management
+                </Text>
+                <Layout>
+                  <Layout.Section variant="oneHalf">
+                    <BlockStack gap="400">
                       <Text as="h3" variant="headingMd">
-                        Order Management
+                        Order Creation & Processing
                       </Text>
                       <List>
                         <List.Item>Draft order creation</List.Item>
                         <List.Item>Order completion</List.Item>
+                        <List.Item>Company location selection</List.Item>
+                        <List.Item>Billing address management</List.Item>
+                      </List>
+                    </BlockStack>
+                  </Layout.Section>
+                  <Layout.Section variant="oneHalf">
+                    <BlockStack gap="400">
+                      <Text as="h3" variant="headingMd">
+                        Fulfillment & Validation
+                      </Text>
+                      <List>
                         <List.Item>Fulfillment generation</List.Item>
                         <List.Item>Quantity validation rules</List.Item>
-                        <List.Item>Corporate location selection</List.Item>
+                        <List.Item>Minimum/maximum quantity limits</List.Item>
+                        <List.Item>Quantity increment validation</List.Item>
                       </List>
                     </BlockStack>
                   </Layout.Section>
@@ -241,7 +280,7 @@ export default function Index() {
         {/* Why Choose This App */}
         <Layout>
           <Layout.Section>
-            <Card>
+              <Card>
               <BlockStack gap="500">
                 <Text as="h2" variant="headingLg">
                   Why Choose B2B Wholesale POS?
@@ -263,10 +302,10 @@ export default function Index() {
                       <Text as="h3" variant="headingMd">
                         🏢 B2B Customer Focus
                       </Text>
-                      <Text variant="bodyMd" as="p">
-                        Designed specifically for wholesale operations with 
-                        corporate customer management and location-based workflows.
-                      </Text>
+                        <Text variant="bodyMd" as="p">
+                          Designed specifically for wholesale operations with 
+                          company customer management and location-based workflows.
+                        </Text>
                     </BlockStack>
                   </Layout.Section>
                   <Layout.Section variant="oneThird">
@@ -291,7 +330,7 @@ export default function Index() {
                       <Text variant="bodyMd" as="p">
                         Built on Shopify's secure infrastructure with enterprise-grade 
                         security and reliable order processing capabilities.
-                      </Text>
+                  </Text>
                     </BlockStack>
                   </Layout.Section>
                   <Layout.Section variant="oneThird">
@@ -314,18 +353,18 @@ export default function Index() {
                         Reduce manual order processing time and errors while 
                         maintaining professional B2B customer relationships.
                       </Text>
-                    </BlockStack>
+                  </BlockStack>
                   </Layout.Section>
                 </Layout>
-              </BlockStack>
-            </Card>
+                </BlockStack>
+              </Card>
           </Layout.Section>
         </Layout>
 
         {/* Getting Started */}
         <Layout>
           <Layout.Section variant="oneThird">
-            <Card>
+              <Card>
               <BlockStack gap="500">
                 <Text as="h2" variant="headingLg">
                   Getting Started
@@ -349,8 +388,8 @@ export default function Index() {
                     </List.Item>
                   </List>
                 </BlockStack>
-              </BlockStack>
-            </Card>
+                </BlockStack>
+              </Card>
           </Layout.Section>
         </Layout>
 
