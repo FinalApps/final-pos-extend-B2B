@@ -1,12 +1,9 @@
-import { useEffect } from "react";
-import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "@remix-run/node";
-import { useFetcher } from "@remix-run/react";
+import type { HeadersFunction, LoaderFunctionArgs } from "@remix-run/node";
 import {
   Page,
   Layout,
   Text,
   Card,
-  Button,
   BlockStack,
   Box,
   List,
@@ -15,7 +12,7 @@ import {
   Badge,
   Divider,
 } from "@shopify/polaris";
-import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
+import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -36,101 +33,11 @@ export const headers: HeadersFunction = () => {
   };
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
-  const color = ["Red", "Orange", "Yellow", "Green"][
-    Math.floor(Math.random() * 4)
-  ];
-  const response = await admin.graphql(
-    `#graphql
-      mutation populateProduct($product: ProductCreateInput!) {
-        productCreate(product: $product) {
-          product {
-            id
-            title
-            handle
-            status
-            variants(first: 10) {
-              edges {
-                node {
-                  id
-                  price
-                  barcode
-                  createdAt
-                }
-              }
-            }
-          }
-        }
-      }`,
-    {
-      variables: {
-        product: {
-          title: `${color} Snowboard`,
-        },
-      },
-    },
-  );
-  const responseJson = await response.json();
-
-  const product = responseJson.data!.productCreate!.product!;
-  const variantId = product.variants.edges[0]!.node!.id!;
-
-  const variantResponse = await admin.graphql(
-    `#graphql
-    mutation shopifyRemixTemplateUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants {
-          id
-          price
-          barcode
-          createdAt
-        }
-      }
-    }`,
-    {
-      variables: {
-        productId: product.id,
-        variants: [{ id: variantId, price: "100.00" }],
-      },
-    },
-  );
-
-  const variantResponseJson = await variantResponse.json();
-
-  return {
-    product: responseJson!.data!.productCreate!.product,
-    variant:
-      variantResponseJson!.data!.productVariantsBulkUpdate!.productVariants,
-  };
-};
 
 export default function Index() {
-  const fetcher = useFetcher<typeof action>();
-
-  const shopify = useAppBridge();
-  const isLoading =
-    ["loading", "submitting"].includes(fetcher.state) &&
-    fetcher.formMethod === "POST";
-  const productId = fetcher.data?.product?.id.replace(
-    "gid://shopify/Product/",
-    "",
-  );
-
-  useEffect(() => {
-    if (productId) {
-      shopify.toast.show("Product created");
-    }
-  }, [productId, shopify]);
-  const generateProduct = () => fetcher.submit({}, { method: "POST" });
-
   return (
     <Page>
-      <TitleBar title="B2B Wholesale POS Extension">
-        <button variant="primary" onClick={generateProduct}>
-          Test Product Creation
-        </button>
-      </TitleBar>
+      <TitleBar title="B2B Wholesale POS Extension" />
       
       <BlockStack gap="800">
         {/* Hero Section */}
@@ -535,82 +442,11 @@ export default function Index() {
                     </List.Item>
                   </List>
                 </BlockStack>
-                <BlockStack gap="300">
-                  <Text as="h3" variant="headingMd">
-                    Test Product Creation
-                  </Text>
-                  <Text variant="bodyMd" as="p">
-                    Generate a test product to verify GraphQL integration and 
-                    app functionality.
-                  </Text>
-                  <InlineStack gap="300">
-                    <Button loading={isLoading} onClick={generateProduct}>
-                      Generate Product
-                    </Button>
-                    {fetcher.data?.product && (
-                      <Button
-                        url={`shopify:admin/products/${productId}`}
-                        target="_blank"
-                        variant="plain"
-                      >
-                        View Product
-                      </Button>
-                    )}
-                  </InlineStack>
-                </BlockStack>
               </BlockStack>
             </Card>
           </Layout.Section>
         </Layout>
 
-        {/* Demo Section */}
-        {fetcher.data?.product && (
-          <Layout>
-            <Layout.Section>
-              <Card>
-                <BlockStack gap="500">
-                  <Text as="h2" variant="headingLg">
-                    Demo: Product Creation
-                  </Text>
-                  <Text as="h3" variant="headingMd">
-                    Product Create Mutation Result
-                  </Text>
-                  <Box
-                    padding="400"
-                    background="bg-surface-active"
-                    borderWidth="025"
-                    borderRadius="200"
-                    borderColor="border"
-                    overflowX="scroll"
-                  >
-                    <pre style={{ margin: 0 }}>
-                      <code>
-                        {JSON.stringify(fetcher.data.product, null, 2)}
-                      </code>
-                    </pre>
-                  </Box>
-                  <Text as="h3" variant="headingMd">
-                    Variant Update Mutation Result
-                  </Text>
-                  <Box
-                    padding="400"
-                    background="bg-surface-active"
-                    borderWidth="025"
-                    borderRadius="200"
-                    borderColor="border"
-                    overflowX="scroll"
-                  >
-                    <pre style={{ margin: 0 }}>
-                      <code>
-                        {JSON.stringify(fetcher.data.variant, null, 2)}
-                      </code>
-                    </pre>
-                  </Box>
-                </BlockStack>
-              </Card>
-            </Layout.Section>
-          </Layout>
-        )}
       </BlockStack>
     </Page>
   );
