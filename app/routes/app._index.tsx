@@ -50,13 +50,13 @@ export default function Index() {
                     B2B Wholesale POS Extension
                   </Text>
                   <Text variant="bodyLg" as="p" tone="subdued">
-                    Streamline your wholesale operations with advanced B2B order management, 
-                    volume pricing, and corporate customer support directly in Shopify POS.
+                    Streamline your wholesale operations with B2B customer management, 
+                    corporate location selection, and draft order creation directly in Shopify POS.
                   </Text>
                   <InlineStack gap="200">
                     <Badge tone="success">POS Extension</Badge>
                     <Badge tone="info">B2B Ready</Badge>
-                    <Badge tone="attention">Volume Pricing</Badge>
+                    <Badge tone="attention">Draft Orders</Badge>
                   </InlineStack>
                 </BlockStack>
               </BlockStack>
@@ -77,29 +77,29 @@ export default function Index() {
                     <BlockStack gap="400">
                       <BlockStack gap="200">
                         <Text as="h3" variant="headingMd">
-                          🏢 Corporate Customer Management
+                          🏢 B2B Customer Management
                         </Text>
                         <Text variant="bodyMd" as="p">
-                          Seamlessly manage corporate customers with multiple locations, 
-                          billing addresses, and contact profiles directly from POS.
+                          Search and select corporate customers with automatic B2B detection 
+                          based on customer tags and company profiles.
                         </Text>
                       </BlockStack>
                       <BlockStack gap="200">
                         <Text as="h3" variant="headingMd">
-                          💰 Dynamic Volume Pricing
+                          📍 Corporate Location Selection
                         </Text>
                         <Text variant="bodyMd" as="p">
-                          Implement tiered pricing with quantity breaks, minimum order 
-                          quantities, and custom pricing rules for wholesale customers.
+                          Choose corporate locations with full billing addresses 
+                          for accurate order processing and customer management.
                         </Text>
                       </BlockStack>
                       <BlockStack gap="200">
                         <Text as="h3" variant="headingMd">
-                          📦 Advanced Order Management
+                          🛒 Cart Management
                         </Text>
                         <Text variant="bodyMd" as="p">
-                          Create draft orders, manage fulfillment, and track wholesale 
-                          transactions with comprehensive order lifecycle support.
+                          Add products to cart, update quantities, and manage 
+                          wholesale orders with quantity validation rules.
                         </Text>
                       </BlockStack>
                     </BlockStack>
@@ -108,29 +108,29 @@ export default function Index() {
                     <BlockStack gap="400">
                       <BlockStack gap="200">
                         <Text as="h3" variant="headingMd">
-                          🎯 Location-Based Pricing
+                          📋 Draft Order Creation
                         </Text>
                         <Text variant="bodyMd" as="p">
-                          Configure different pricing strategies based on corporate 
-                          locations with automatic tax calculation and shipping rules.
+                          Create draft orders for B2B customers with automatic 
+                          completion and fulfillment capabilities.
                         </Text>
                       </BlockStack>
                       <BlockStack gap="200">
                         <Text as="h3" variant="headingMd">
-                          🔄 Real-Time Inventory Sync
+                          🔢 Quantity Rules
                         </Text>
                         <Text variant="bodyMd" as="p">
-                          Keep inventory levels synchronized across all channels with 
-                          real-time stock updates and availability checking.
+                          Set minimum and maximum quantities with increment 
+                          rules for wholesale order validation.
                         </Text>
                       </BlockStack>
                       <BlockStack gap="200">
                         <Text as="h3" variant="headingMd">
-                          📊 B2B Analytics & Reporting
+                          ✅ Order Fulfillment
                         </Text>
                         <Text variant="bodyMd" as="p">
-                          Track wholesale performance with detailed analytics, 
-                          customer insights, and sales reporting capabilities.
+                          Complete orders and create fulfillments directly 
+                          from POS for streamlined wholesale operations.
                         </Text>
                       </BlockStack>
                     </BlockStack>
@@ -157,8 +157,8 @@ export default function Index() {
                           1. Customer Selection
                         </Text>
                         <Text variant="bodyMd" as="p" alignment="center">
-                          Select corporate customers from your B2B customer base 
-                          with automatic company profile detection.
+                          Search and select B2B customers with automatic detection 
+                          based on customer tags and company profiles.
                         </Text>
                       </Box>
                     </BlockStack>
@@ -167,11 +167,11 @@ export default function Index() {
                     <BlockStack gap="300">
                       <Box padding="400" background="bg-surface-secondary" borderRadius="200">
                         <Text as="h3" variant="headingMd" alignment="center">
-                          2. Location Configuration
+                          2. Location & Cart Setup
                         </Text>
                         <Text variant="bodyMd" as="p" alignment="center">
-                          Choose corporate locations with specific billing addresses 
-                          and pricing rules for accurate order processing.
+                          Choose corporate locations with billing addresses, 
+                          then add products to cart with quantity validation.
                         </Text>
                       </Box>
                     </BlockStack>
@@ -180,11 +180,11 @@ export default function Index() {
                     <BlockStack gap="300">
                       <Box padding="400" background="bg-surface-secondary" borderRadius="200">
                         <Text as="h3" variant="headingMd" alignment="center">
-                          3. Order Processing
+                          3. Order Creation
                         </Text>
                         <Text variant="bodyMd" as="p" alignment="center">
-                          Process wholesale orders with volume pricing, tax calculation, 
-                          and automatic fulfillment routing.
+                          Create draft orders, complete them, and generate 
+                          fulfillments for streamlined B2B operations.
                         </Text>
                       </Box>
                     </BlockStack>
@@ -207,14 +207,14 @@ export default function Index() {
                   <Layout.Section variant="oneHalf">
                     <BlockStack gap="400">
                       <Text as="h3" variant="headingMd">
-                        Pricing Configuration
+                        Customer Management
                       </Text>
                       <List>
-                        <List.Item>Volume discount tiers</List.Item>
-                        <List.Item>Minimum order quantities</List.Item>
-                        <List.Item>Quantity increment rules</List.Item>
-                        <List.Item>Location-specific pricing</List.Item>
-                        <List.Item>Customer group pricing</List.Item>
+                        <List.Item>B2B customer detection</List.Item>
+                        <List.Item>Customer search functionality</List.Item>
+                        <List.Item>Company profile integration</List.Item>
+                        <List.Item>Customer tag-based identification</List.Item>
+                        <List.Item>POS order history tracking</List.Item>
                       </List>
                     </BlockStack>
                   </Layout.Section>
@@ -225,10 +225,10 @@ export default function Index() {
                       </Text>
                       <List>
                         <List.Item>Draft order creation</List.Item>
-                        <List.Item>Fulfillment automation</List.Item>
-                        <List.Item>Tax calculation rules</List.Item>
-                        <List.Item>Shipping method selection</List.Item>
-                        <List.Item>Payment term management</List.Item>
+                        <List.Item>Order completion</List.Item>
+                        <List.Item>Fulfillment generation</List.Item>
+                        <List.Item>Quantity validation rules</List.Item>
+                        <List.Item>Corporate location selection</List.Item>
                       </List>
                     </BlockStack>
                   </Layout.Section>
@@ -261,22 +261,22 @@ export default function Index() {
                   <Layout.Section variant="oneThird">
                     <BlockStack gap="300">
                       <Text as="h3" variant="headingMd">
-                        ⚡ Real-Time Performance
+                        🏢 B2B Customer Focus
                       </Text>
                       <Text variant="bodyMd" as="p">
-                        Lightning-fast order processing with real-time inventory 
-                        updates and instant pricing calculations.
+                        Designed specifically for wholesale operations with 
+                        corporate customer management and location-based workflows.
                       </Text>
                     </BlockStack>
                   </Layout.Section>
                   <Layout.Section variant="oneThird">
                     <BlockStack gap="300">
                       <Text as="h3" variant="headingMd">
-                        🔒 Enterprise Security
+                        📋 Streamlined Workflow
                       </Text>
                       <Text variant="bodyMd" as="p">
-                        Secure customer data handling with enterprise-grade security 
-                        and compliance with Shopify's data protection standards.
+                        Simple 3-step process from customer selection to order 
+                        fulfillment with minimal clicks and maximum efficiency.
                       </Text>
                     </BlockStack>
                   </Layout.Section>
@@ -286,33 +286,33 @@ export default function Index() {
                   <Layout.Section variant="oneThird">
                     <BlockStack gap="300">
                       <Text as="h3" variant="headingMd">
-                        📈 Scalable Architecture
+                        🔒 Secure & Reliable
                       </Text>
                       <Text variant="bodyMd" as="p">
-                        Designed to handle high-volume wholesale operations with 
-                        scalable infrastructure and performance optimization.
+                        Built on Shopify's secure infrastructure with enterprise-grade 
+                        security and reliable order processing capabilities.
                       </Text>
                     </BlockStack>
                   </Layout.Section>
                   <Layout.Section variant="oneThird">
                     <BlockStack gap="300">
                       <Text as="h3" variant="headingMd">
-                        🛠️ Easy Setup & Maintenance
+                        🛠️ Easy Setup
                       </Text>
                       <Text variant="bodyMd" as="p">
-                        Simple configuration with minimal setup required and 
-                        comprehensive documentation for easy maintenance.
+                        Quick installation with minimal configuration required. 
+                        Works out of the box with existing B2B customer data.
                       </Text>
                     </BlockStack>
                   </Layout.Section>
                   <Layout.Section variant="oneThird">
                     <BlockStack gap="300">
                       <Text as="h3" variant="headingMd">
-                        💬 Dedicated Support
+                        💰 Cost Effective
                       </Text>
                       <Text variant="bodyMd" as="p">
-                        Professional support team with expertise in B2B operations 
-                        and Shopify POS integration.
+                        Reduce manual order processing time and errors while 
+                        maintaining professional B2B customer relationships.
                       </Text>
                     </BlockStack>
                   </Layout.Section>
