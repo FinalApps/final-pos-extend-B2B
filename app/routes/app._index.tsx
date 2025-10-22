@@ -322,101 +322,8 @@ export default function Index() {
           </Layout.Section>
         </Layout>
 
-        {/* Technical Specifications & Getting Started */}
+        {/* Getting Started */}
         <Layout>
-          <Layout.Section variant="oneHalf">
-            <Card>
-              <BlockStack gap="500">
-                <Text as="h2" variant="headingLg">
-                  Technical Specifications
-                </Text>
-                <Layout>
-                  <Layout.Section variant="oneHalf">
-                    <BlockStack gap="300">
-                      <InlineStack align="space-between">
-                        <Text as="span" variant="bodyMd">
-                          Framework
-                        </Text>
-                        <Link
-                          url="https://remix.run"
-                          target="_blank"
-                          removeUnderline
-                        >
-                          Remix
-                        </Link>
-                      </InlineStack>
-                      <InlineStack align="space-between">
-                        <Text as="span" variant="bodyMd">
-                          Database
-                        </Text>
-                        <Link
-                          url="https://www.prisma.io/"
-                          target="_blank"
-                          removeUnderline
-                        >
-                          Prisma
-                        </Link>
-                      </InlineStack>
-                      <InlineStack align="space-between">
-                        <Text as="span" variant="bodyMd">
-                          UI Framework
-                        </Text>
-                        <span>
-                          <Link
-                            url="https://polaris.shopify.com"
-                            target="_blank"
-                            removeUnderline
-                          >
-                            Polaris
-                          </Link>
-                          {", "}
-                          <Link
-                            url="https://shopify.dev/docs/apps/tools/app-bridge"
-                            target="_blank"
-                            removeUnderline
-                          >
-                            App Bridge
-                          </Link>
-                        </span>
-                      </InlineStack>
-                    </BlockStack>
-                  </Layout.Section>
-                  <Layout.Section variant="oneHalf">
-                    <BlockStack gap="300">
-                      <InlineStack align="space-between">
-                        <Text as="span" variant="bodyMd">
-                          API Integration
-                        </Text>
-                        <Link
-                          url="https://shopify.dev/docs/api/admin-graphql"
-                          target="_blank"
-                          removeUnderline
-                        >
-                          GraphQL API
-                        </Link>
-                      </InlineStack>
-                      <InlineStack align="space-between">
-                        <Text as="span" variant="bodyMd">
-                          Extension Type
-                        </Text>
-                        <Text as="span" variant="bodyMd">
-                          POS UI Extension
-                        </Text>
-                      </InlineStack>
-                      <InlineStack align="space-between">
-                        <Text as="span" variant="bodyMd">
-                          API Version
-                        </Text>
-                        <Text as="span" variant="bodyMd">
-                          2025-07
-                        </Text>
-                      </InlineStack>
-                    </BlockStack>
-                  </Layout.Section>
-                </Layout>
-              </BlockStack>
-            </Card>
-          </Layout.Section>
           <Layout.Section variant="oneThird">
             <Card>
               <BlockStack gap="500">
@@ -435,7 +342,7 @@ export default function Index() {
                       Configure B2B customer groups
                     </List.Item>
                     <List.Item>
-                      Set up volume pricing rules
+                      Set up quantity validation rules
                     </List.Item>
                     <List.Item>
                       Test with sample orders
