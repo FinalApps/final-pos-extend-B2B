@@ -1624,7 +1624,6 @@ const Modal = () => {
   const [selectedPaymentTerms, setSelectedPaymentTerms] = useState<any>(null)
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
   const [productDetailSource, setProductDetailSource] = useState<'cart' | 'quantity'>('cart')
-  const [productDescription, setProductDescription] = useState<string>('')
   const [validationErrors, setValidationErrors] = useState<string[]>([])
   const [orderNumber] = useState(generateOrderNumber())
   const [createdOrder, setCreatedOrder] = useState<B2BOrder | null>(null)
@@ -1938,52 +1937,142 @@ const Modal = () => {
     }
   }, [])
 
-
-
-  // Fetch product description
-  const fetchProductDescription = useCallback(async (productId: string) => {
+  // Create fulfillment for the order to mark it as "Fulfilled"
+  const createFulfillment = useCallback(async (orderId: string) => {
     try {
-      console.log(`Fetching product description for: ${productId}`)
+      console.log(`Creating fulfillment for order: ${orderId}`)
       
-      // Convert productId to proper GID format if needed
-      let productGid = productId
-      if (!productGid.startsWith('gid://shopify/Product/')) {
-        productGid = `gid://shopify/Product/${productId}`
-      }
-      
-      const response = await fetch('shopify:admin/api/graphql.json', {
+      // First, get the fulfillment orders for this order
+      const fulfillmentOrdersQuery = `
+        query GetFulfillmentOrders($orderId: ID!) {
+          order(id: $orderId) {
+            id
+            fulfillmentOrders(first: 10) {
+              edges {
+                node {
+                  id
+                  status
+                  lineItems(first: 50) {
+                    edges {
+                      node {
+                        id
+                        quantity
+                        remainingQuantity
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `
+
+      const fulfillmentOrdersResponse = await fetch('shopify:admin/api/graphql.json', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: `
-            query GetProductDescription($productId: ID!) {
-              product(id: $productId) {
-                id
-                title
-                description
-              }
-            }
-          `,
-          variables: { productId: productGid }
+          query: fulfillmentOrdersQuery,
+          variables: { orderId }
         })
       })
 
-      const result = await response.json()
-      console.log(`Product description response for ${productGid}:`, result)
+      const fulfillmentOrdersResult = await fulfillmentOrdersResponse.json()
+      console.log('Fulfillment orders response:', fulfillmentOrdersResult)
 
-      if (result.data?.product?.description) {
-        setProductDescription(result.data.product.description)
-        return result.data.product.description
+      if (fulfillmentOrdersResult.errors) {
+        console.error('GraphQL errors fetching fulfillment orders:', fulfillmentOrdersResult.errors)
+        return null
       }
+
+      const fulfillmentOrders = fulfillmentOrdersResult.data?.order?.fulfillmentOrders?.edges || []
       
-      setProductDescription('')
-      return ''
+      if (fulfillmentOrders.length === 0) {
+        console.log('No fulfillment orders found for this order')
+        return null
+      }
+
+      // Create fulfillment for each fulfillment order
+      for (const fulfillmentOrderEdge of fulfillmentOrders) {
+        const fulfillmentOrder = fulfillmentOrderEdge.node
+        
+        // Prepare line items for fulfillment
+        const fulfillmentLineItems = fulfillmentOrder.lineItems.edges.map((edge: any) => ({
+          id: edge.node.id,
+          quantity: edge.node.remainingQuantity || edge.node.quantity
+        })).filter((item: any) => item.quantity > 0)
+
+        if (fulfillmentLineItems.length === 0) {
+          console.log('No items to fulfill for fulfillment order:', fulfillmentOrder.id)
+          continue
+        }
+
+        const fulfillmentMutation = `
+          mutation CreateFulfillment($input: FulfillmentCreateInput!) {
+            fulfillmentCreate(input: $input) {
+              fulfillment {
+                id
+                status
+                trackingInfo {
+                  number
+                  url
+                }
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `
+
+        const fulfillmentInput = {
+          fulfillmentOrderId: fulfillmentOrder.id,
+          lineItems: fulfillmentLineItems,
+          notifyCustomer: false, // Don't notify customer for B2B orders
+          trackingInfo: {
+            number: `B2B-${orderNumber}`,
+            url: null
+          }
+        }
+
+        const fulfillmentResponse = await fetch('shopify:admin/api/graphql.json', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: fulfillmentMutation,
+            variables: { input: fulfillmentInput }
+          })
+        })
+
+        const fulfillmentResult = await fulfillmentResponse.json()
+        console.log('Fulfillment creation response:', fulfillmentResult)
+
+        if (fulfillmentResult.errors) {
+          console.error('GraphQL errors creating fulfillment:', fulfillmentResult.errors)
+          continue
+        }
+
+        if (fulfillmentResult.data?.fulfillmentCreate?.userErrors?.length > 0) {
+          console.error('Fulfillment creation user errors:', fulfillmentResult.data.fulfillmentCreate.userErrors)
+          continue
+        }
+
+        const fulfillment = fulfillmentResult.data?.fulfillmentCreate?.fulfillment
+        if (fulfillment) {
+          console.log('Fulfillment created successfully:', fulfillment.id)
+        }
+      }
+
+      return true
     } catch (error) {
-      console.error(`Error fetching product description for ${productId}:`, error)
-      setProductDescription('')
-      return ''
+      console.error('Error creating fulfillment:', error)
+      return null
     }
-  }, [])
+  }, [orderNumber])
+
+
+
 
   // Fetch product images using the standard Shopify Admin GraphQL API
   const fetchProductImages = useCallback(async (items: any[]) => {
@@ -2244,12 +2333,6 @@ const Modal = () => {
     }
   }, [currentScreen, availableCompanies.length, companiesLoading, selectedCustomer, fetchCustomerCompanies])
 
-  // Fetch product description when product detail screen is shown
-  useEffect(() => {
-    if (currentScreen === 'product-detail' && selectedProduct?.productId) {
-      fetchProductDescription(selectedProduct.productId)
-    }
-  }, [currentScreen, selectedProduct?.productId, fetchProductDescription])
 
   // Handlers
   const fetchB2BPricingForCart = useCallback(async (catalogInfo: any) => {
@@ -2326,7 +2409,7 @@ const Modal = () => {
           if (items && items.length > 0) {
             await fetchProductImages(items)
           }
-        } else {
+      } else {
           const productIds = cartItems.map(item => item.productId)
           const { pricing, rules } = await fetchCatalogData(productIds)
           setB2bPricing(pricing)
@@ -2450,6 +2533,11 @@ const Modal = () => {
             draftOrder {
               id
               name
+                paymentTerms {
+        id
+        paymentTermsType
+        dueInDays
+      }
               status
               invoiceUrl
               totalPrice
@@ -2529,12 +2617,20 @@ const Modal = () => {
 
       console.log('Creating draft order with input:', JSON.stringify(input, null, 2))
 
-      const response = await fetch('shopify:admin/api/graphql.json', {
+      // Try to create draft order with payment terms first
+      let inputWithPaymentTerms = { ...input }
+      if (selectedPaymentTerms) {
+        inputWithPaymentTerms.paymentTerms = {
+          paymentTermsTemplateId: selectedPaymentTerms.id
+        }
+      }
+
+      let response = await fetch('shopify:admin/api/graphql.json', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: draftOrderMutation,
-          variables: { input }
+          variables: { input: inputWithPaymentTerms }
         })
       })
 
@@ -2542,9 +2638,38 @@ const Modal = () => {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
-      const result = await response.json()
+      let result = await response.json()
       
       console.log('Draft order creation response:', JSON.stringify(result, null, 2))
+      
+      // Check if payment terms permission error occurred
+      const hasPaymentTermsError = result.data?.draftOrderCreate?.userErrors?.some((error: any) => 
+        error.message.includes('payment terms') || error.message.includes('Payment terms')
+      )
+
+      // If payment terms failed due to permissions, retry without payment terms
+      if (hasPaymentTermsError && selectedPaymentTerms) {
+        console.log('Payment terms permission denied, retrying without payment terms...')
+        
+        const inputWithoutPaymentTerms = { ...input }
+        delete inputWithoutPaymentTerms.paymentTerms
+        
+        response = await fetch('shopify:admin/api/graphql.json', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: draftOrderMutation,
+            variables: { input: inputWithoutPaymentTerms }
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        result = await response.json()
+        console.log('Draft order creation retry response:', JSON.stringify(result, null, 2))
+      }
       
       if (result.errors) {
         console.error('GraphQL errors:', result.errors)
@@ -2614,6 +2739,15 @@ const Modal = () => {
             isDraft: false,
             status: 'completed' as const
           } : prev)
+
+          // Create fulfillment to mark the order as "Fulfilled"
+          console.log('Creating fulfillment for completed order:', completedOrder.id)
+          const fulfillmentResult = await createFulfillment(completedOrder.id)
+          if (fulfillmentResult) {
+            console.log('Order marked as fulfilled successfully')
+          } else {
+            console.log('Failed to create fulfillment, but order was completed')
+          }
         }
       }
       
@@ -2623,7 +2757,7 @@ const Modal = () => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       setValidationErrors([`❌ Failed to create order: ${errorMessage}. Please try again or contact support.`])
     }
-  }, [selectedCustomer, selectedLocation, poNumber, quantityValidation, cartItems, orderSummary, orderNumber, deliveryFee, deliveryMethod, surchargeAmount, surchargeDescription, isB2B])
+  }, [selectedCustomer, selectedLocation, poNumber, quantityValidation, cartItems, orderSummary, orderNumber, deliveryFee, deliveryMethod, surchargeAmount, surchargeDescription, isB2B, createFulfillment])
 
   // Navigation handlers
   const goToNextScreen = useCallback(() => {
@@ -2731,6 +2865,18 @@ const Modal = () => {
     </>
   )
 
+  const formatBillingAddress = (billingAddress: any) => {
+    if (!billingAddress) return 'No billing address available'
+    
+    const parts = [
+      billingAddress.address1,
+      billingAddress.city,
+      billingAddress.country
+    ].filter(Boolean)
+    
+    return parts.length > 0 ? parts.join(', ') : 'No billing address available'
+  }
+
   const renderLocationScreen = () => (
     <>
       <Text variant="headingLarge">Corporate Location Selection</Text>
@@ -2740,11 +2886,14 @@ const Modal = () => {
       {availableCompanies.length > 0 ? (
         <ScrollView>
           {availableCompanies.map((location, index) => {
+            const billingAddress = formatBillingAddress(location.billingAddress)
+            const buttonTitle = `${location.name}\n${billingAddress}`
+            
             return (
             <>
               <Button
                   key={location.id}
-                  title={location.name}
+                  title={buttonTitle}
                   type={selectedCompany === location.id ? 'primary' : 'basic'}
                 onPress={async () => {
                     setSelectedCompany(location.id)
@@ -2837,11 +2986,11 @@ const Modal = () => {
 
   const renderCartScreen = () => (
     <>
-        <Button
+      <Button
           title="← Return to Location Selection"
-          type="basic"
-          onPress={() => setCurrentScreen('location')}
-        />
+        type="basic"
+        onPress={() => setCurrentScreen('location')}
+      />
       <Text> </Text>
       
       <POSBlock>
@@ -2944,7 +3093,7 @@ const Modal = () => {
               <Text> </Text>
               <Button
                 title="Resolve Quantity Issues"
-              onPress={() => setCurrentScreen('quantity')}
+                onPress={() => setCurrentScreen('quantity')}
                 
               />
               <Text> </Text>
@@ -3133,9 +3282,6 @@ const Modal = () => {
         )}
         <Text> </Text>
         
-        {productDescription && (
-          <Text>{productDescription}</Text>
-        )}
         <Text> </Text>
         
         <Text variant="headingLarge">B2B Pricing</Text>
@@ -3253,11 +3399,11 @@ const Modal = () => {
 
   const renderDeliveryScreen = () => (
     <>
-        <Button
+      <Button
           title="← Return to Transaction Review"
-          type="basic"
-          onPress={() => setCurrentScreen(quantityValidation.isValid ? 'cart' : 'quantity')}
-        />
+        type="basic"
+        onPress={() => setCurrentScreen(quantityValidation.isValid ? 'cart' : 'quantity')}
+      />
       <Text> </Text>
       
       <Text variant="headingLarge">Fulfillment & Transaction Details</Text>
@@ -3301,7 +3447,7 @@ const Modal = () => {
             placeholder="e.g., Express Delivery, White Glove Service..."
           />
         <Text> </Text>
-        
+
         <TextField
             label="Fulfillment Fee Amount"
             value={customDeliveryFee}
@@ -3389,11 +3535,11 @@ const Modal = () => {
 
   const renderConfirmationScreen = () => (
     <>
-        <Button
+      <Button
           title="← Return to Fulfillment Details"
-          type="basic"
-          onPress={() => setCurrentScreen('delivery')}
-        />
+        type="basic"
+        onPress={() => setCurrentScreen('delivery')}
+      />
       <Text> </Text>
       
       <Text variant="headingLarge">Transaction Processed Successfully</Text>
