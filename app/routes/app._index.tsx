@@ -109,8 +109,8 @@ export default function Index() {
                       <BlockStack gap="200">
                         <Text as="h3" variant="headingMd">
                           📋 Draft Order Creation
-                        </Text>
-                        <Text variant="bodyMd" as="p">
+                  </Text>
+                  <Text variant="bodyMd" as="p">
                           Create draft orders for B2B customers with automatic 
                           completion and fulfillment capabilities.
                   </Text>

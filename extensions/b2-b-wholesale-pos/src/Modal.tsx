@@ -2829,24 +2829,28 @@ const Modal = () => {
             const email = (customer.email || 'No email address').trim()
             const posOrders = customer.hasPosOrders ? 'Previous POS Transactions' : ''
             
-            // Create button text with name and email on separate lines
-            const buttonText = posOrders 
-              ? `${name}\n${email}\nPOS Transactions`
-              : `${name}\n${email}`
-            
             return (
-              <>
-                <Button
-                  key={customer.id}
-                  title={buttonText}
-                  onPress={() => {
-                    setSelectedCustomer(customer)
-                    setSelectedCustomerId(customer.id)
-                  }}
-                  type={selectedCustomerId === customer.id ? 'primary' : 'basic'}
-                />
-                <Text> </Text>
-              </>
+              <POSBlock key={customer.id}>
+                <POSBlockRow>
+                  <Text variant="headingLarge">{name}</Text>
+                  <Button
+                    title={selectedCustomerId === customer.id ? "✓" : "○"}
+                    onPress={() => {
+                      setSelectedCustomer(customer)
+                      setSelectedCustomerId(customer.id)
+                    }}
+                    type={selectedCustomerId === customer.id ? 'primary' : 'basic'}
+                  />
+                </POSBlockRow>
+                <POSBlockRow>
+                  <Text variant="body">{email}</Text>
+                </POSBlockRow>
+                {posOrders && (
+                  <POSBlockRow>
+                    <Text variant="body">POS Transactions</Text>
+                  </POSBlockRow>
+                )}
+              </POSBlock>
             )
           })}
         </ScrollView>
