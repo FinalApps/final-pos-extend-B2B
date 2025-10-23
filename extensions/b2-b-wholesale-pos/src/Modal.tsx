@@ -2829,12 +2829,10 @@ const Modal = () => {
             const email = (customer.email || 'No email address').trim()
             const posOrders = customer.hasPosOrders ? 'Previous POS Transactions' : ''
             
-            // Create button text with hidden POS orders text to maintain consistent button size
-            const baseText = `${name} - ${email}`
-            const hiddenPosText = ' '.repeat(15) // Invisible spaces to maintain button size
+            // Create button text with name and email on separate lines
             const buttonText = posOrders 
-              ? `${baseText} - POS Transactions`
-              : `${baseText}${hiddenPosText}`
+              ? `${name}\n${email}\nPOS Transactions`
+              : `${name}\n${email}`
             
             return (
               <>
