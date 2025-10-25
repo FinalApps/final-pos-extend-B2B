@@ -11,9 +11,7 @@ import {
   Button,
   TextField,
   Banner,
-  Image,
-  POSBlock,
-  POSBlockRow
+  Image
 } from '@shopify/ui-extensions-react/point-of-sale'
 
 
@@ -91,7 +89,7 @@ const useCustomers = () => {
         const fetchedCustomers: Customer[] = result.data.customers.edges.map((edge: any) => {
           const node = edge.node
           return {
-            id: node.id.split('/').pop() || 'unknown',
+            id: node.id,
             name: `${node.firstName || ''} ${node.lastName || ''}`.trim() || 'Unknown Customer',
             email: node.email,
             phone: node.phone,
@@ -170,6 +168,21 @@ const useShopCurrency = () => {
   return { currency, loading }
 }
 
+// Helper function to normalize customer IDs to proper GID format
+const normalizeCustomerId = (customerId: string | null | undefined): string | null => {
+  if (!customerId) {
+    return null
+  }
+  
+  // If it's already a GID, return as-is
+  if (customerId.startsWith('gid://')) {
+    return customerId
+  }
+  
+  // If it's just a numeric ID, wrap it in GID format
+  return `gid://shopify/Customer/${customerId}`
+}
+
 // Simple B2B customer detection hook
 const useB2BCustomerDetection = (customerId: string | null) => {
   const [isB2B, setIsB2B] = useState<boolean | null>(null)
@@ -177,7 +190,9 @@ const useB2BCustomerDetection = (customerId: string | null) => {
 
   useEffect(() => {
     async function detectB2BCustomer() {
-      if (!customerId) {
+      const normalizedId = normalizeCustomerId(customerId)
+      
+      if (!normalizedId) {
         setIsB2B(null)
         return
       }
@@ -192,12 +207,12 @@ const useB2BCustomerDetection = (customerId: string | null) => {
               email
               taxExempt
               tags
-              company {
-                id
-                name
-              }
               companyContactProfiles {
                 id
+                company {
+                  id
+                  name
+                }
               }
             }
           }
@@ -206,9 +221,9 @@ const useB2BCustomerDetection = (customerId: string | null) => {
         const response = await fetch('shopify:admin/api/graphql.json', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             query: customerQuery,
-            variables: { id: customerId }
+            variables: { id: normalizedId }
           })
         })
 
@@ -217,10 +232,13 @@ const useB2BCustomerDetection = (customerId: string | null) => {
 
         if (customer) {
           // Determine if B2B based on multiple signals
+          const hasCompanyContact = customer.companyContactProfiles?.length > 0
+          const hasCompany = hasCompanyContact && customer.companyContactProfiles.some((profile: any) => profile.company)
+          
           const isB2BCustomer = 
             customer.taxExempt ||
-            customer.company ||
-            customer.companyContactProfiles?.length > 0 ||
+            hasCompany ||
+            hasCompanyContact ||
             (customer.tags || []).some((tag: string) =>
               ["B2B", "Wholesale", "Corporate", "Business"].includes(tag)
             )
@@ -230,17 +248,14 @@ const useB2BCustomerDetection = (customerId: string | null) => {
             customerId: customer.id,
             email: customer.email,
             taxExempt: customer.taxExempt,
-            hasCompany: !!customer.company,
-            hasCompanyContact: customer.companyContactProfiles?.length > 0,
+            hasCompanyContact: hasCompanyContact,
+            hasCompany: hasCompany,
             tags: customer.tags,
             isB2B: isB2BCustomer
           })
-        } else {
-          setIsB2B(false)
         }
       } catch (error) {
         console.error('Error detecting B2B customer:', error)
-        setIsB2B(false)
       } finally {
         setLoading(false)
       }
@@ -1646,12 +1661,7 @@ const Modal = () => {
             name
             taxesIncluded
             taxShipping
-            countryCode
             currencyCode
-            taxSettings {
-              taxCalculationMethod
-              taxIncluded
-            }
           }
         }
       `
@@ -1668,9 +1678,9 @@ const Modal = () => {
       if (result.data?.shop) {
         const shop = result.data.shop
         const taxSettings = {
-          taxesIncluded: shop.taxesIncluded || shop.taxSettings?.taxIncluded || false,
+          taxesIncluded: shop.taxesIncluded || false,
           taxShipping: shop.taxShipping || false,
-          countryCode: shop.countryCode || 'US'
+          countryCode: 'US' // Default to US since we can't get country from shop
         }
         
         setStoreTaxSettings(taxSettings)
@@ -1687,20 +1697,22 @@ const Modal = () => {
 
   // Fetch customer tax exemption status
   const fetchCustomerTaxStatus = useCallback(async (customerId: string) => {
+    const normalizedId = normalizeCustomerId(customerId)
+    
+    if (!normalizedId) {
+      console.warn("No customer selected – cannot fetch tax status.")
+      return null
+    }
+
     try {
-      console.log(`Fetching tax status for customer: ${customerId}`)
+      console.log(`Fetching tax status for customer: ${normalizedId}`)
       
       const query = `
         query GetCustomerTaxStatus($customerId: ID!) {
           customer(id: $customerId) {
             id
             taxExempt
-            taxExemptions {
-              id
-              country
-              region
-              taxCode
-            }
+            taxExemptions
           }
         }
       `
@@ -1710,7 +1722,7 @@ const Modal = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query,
-          variables: { customerId: `gid://shopify/Customer/${customerId}` }
+          variables: { customerId: normalizedId }
         })
       })
 
@@ -1747,10 +1759,6 @@ const Modal = () => {
               province
               country
               zip
-            }
-            taxSettings {
-              taxCalculationMethod
-              taxIncluded
             }
           }
         }
@@ -2830,27 +2838,15 @@ const Modal = () => {
             const posOrders = customer.hasPosOrders ? 'Previous POS Transactions' : ''
             
             return (
-              <POSBlock key={customer.id}>
-                <POSBlockRow>
-                  <Text variant="headingLarge">{name}</Text>
-                  <Button
-                    title={selectedCustomerId === customer.id ? "✓" : "○"}
-                    onPress={() => {
-                      setSelectedCustomer(customer)
-                      setSelectedCustomerId(customer.id)
-                    }}
-                    type={selectedCustomerId === customer.id ? 'primary' : 'basic'}
-                  />
-                </POSBlockRow>
-                <POSBlockRow>
-                  <Text variant="body">{email}</Text>
-                </POSBlockRow>
-                {posOrders && (
-                  <POSBlockRow>
-                    <Text variant="body">POS Transactions</Text>
-                  </POSBlockRow>
-                )}
-              </POSBlock>
+              <Button
+                key={customer.id}
+                title={`${name} - ${email}`}
+                onPress={() => {
+                  setSelectedCustomer(customer)
+                  setSelectedCustomerId(customer.id)
+                }}
+                type={selectedCustomerId === customer.id ? 'primary' : 'basic'}
+              />
             )
           })}
         </ScrollView>
@@ -3001,12 +2997,8 @@ const Modal = () => {
       />
       <Text> </Text>
       
-      <POSBlock>
-        <POSBlockRow>
-          <Text variant="headingLarge">Transaction Review</Text>
-          <Text variant="headingLarge">Review order details before proceeding to fulfillment</Text>
-        </POSBlockRow>
-      </POSBlock>
+      <Text variant="headingLarge">Transaction Review</Text>
+      <Text variant="body">Review order details before proceeding to fulfillment</Text>
       
       <Text> </Text>
       
